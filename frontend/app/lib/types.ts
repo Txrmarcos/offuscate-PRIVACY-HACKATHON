@@ -4,10 +4,13 @@ export interface Campaign {
   id: string;
   title: string;
   description: string;
-  privacyLevel: PrivacyLevel;
+  privacyLevel?: PrivacyLevel;
+  privacy?: PrivacyLevel;
   raised: number;
   goal: number;
   supporters: number;
+  daysLeft?: number;
+  organizer?: string;
 }
 
 export interface Activity {

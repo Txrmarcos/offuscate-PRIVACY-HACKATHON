@@ -1,9 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Eye, EyeOff, Lock } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Lock, Loader2, CheckCircle, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PrivacyLevel } from '../lib/types';
+import { useProgram } from '../lib/program';
 
 const TOTAL_STEPS = 4;
 
@@ -34,14 +37,35 @@ const privacyLabels: Record<PrivacyLevel, string> = {
   PRIVATE: 'Private Mode',
 };
 
+// Generate unique campaign ID
+function generateCampaignId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  for (let i = 0; i < 8; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return id;
+}
+
 export default function LaunchPage() {
   const router = useRouter();
+  const { connected, publicKey } = useWallet();
+  const { setVisible } = useWalletModal();
+  const { createCampaign, isReady } = useProgram();
+
   const [step, setStep] = useState(1);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [launchSuccess, setLaunchSuccess] = useState(false);
+  const [txSignature, setTxSignature] = useState<string | null>(null);
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
     goal: '',
     privacyLevel: 'SEMI' as PrivacyLevel,
     title: '',
     description: '',
+    durationDays: '30',
   });
 
   const handleNext = () => {
@@ -56,9 +80,112 @@ export default function LaunchPage() {
     }
   };
 
-  const handleLaunch = () => {
-    router.push('/explore');
+  const handleLaunch = async () => {
+    if (!connected) {
+      setVisible(true);
+      return;
+    }
+
+    if (!isReady) {
+      setError('Wallet not ready');
+      return;
+    }
+
+    setIsLaunching(true);
+    setError(null);
+
+    try {
+      const id = generateCampaignId();
+      const goalSol = parseFloat(formData.goal) || 1;
+      const durationDays = parseInt(formData.durationDays) || 30;
+      const deadlineTimestamp = Math.floor(Date.now() / 1000) + durationDays * 24 * 60 * 60;
+
+      const result = await createCampaign(
+        id,
+        formData.title || 'Untitled Campaign',
+        formData.description || 'No description',
+        goalSol,
+        deadlineTimestamp
+      );
+
+      setCampaignId(id);
+      setTxSignature(result.tx);
+      setLaunchSuccess(true);
+    } catch (err: any) {
+      console.error('Launch failed:', err);
+      setError(err.message || 'Failed to launch campaign');
+    } finally {
+      setIsLaunching(false);
+    }
   };
+
+  // Success screen
+  if (launchSuccess && txSignature && campaignId) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md text-center">
+          <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle className="w-10 h-10 text-green-500" />
+          </div>
+
+          <h1 className="text-3xl font-bold text-white mb-2">Campaign Launched!</h1>
+          <p className="text-[#737373] mb-8">
+            Your campaign is now live on Solana devnet
+          </p>
+
+          <div className="bg-[#141414] border border-[#262626] rounded-xl p-6 mb-6 text-left">
+            <div className="mb-4">
+              <span className="text-xs text-[#737373] uppercase tracking-wider">Campaign ID</span>
+              <p className="text-white font-mono mt-1">{campaignId}</p>
+            </div>
+            <div className="mb-4">
+              <span className="text-xs text-[#737373] uppercase tracking-wider">Title</span>
+              <p className="text-white mt-1">{formData.title || 'Untitled Campaign'}</p>
+            </div>
+            <div>
+              <span className="text-xs text-[#737373] uppercase tracking-wider">Goal</span>
+              <p className="text-white mt-1">{formData.goal} SOL</p>
+            </div>
+          </div>
+
+          <a
+            href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-purple-400 hover:text-purple-300 mb-8"
+          >
+            View on Explorer
+            <ExternalLink className="w-4 h-4" />
+          </a>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => router.push('/explore')}
+              className="flex-1 py-4 bg-white text-black font-medium rounded-xl hover:bg-gray-100 transition-colors"
+            >
+              View Campaigns
+            </button>
+            <button
+              onClick={() => {
+                setLaunchSuccess(false);
+                setStep(1);
+                setFormData({
+                  goal: '',
+                  privacyLevel: 'SEMI',
+                  title: '',
+                  description: '',
+                  durationDays: '30',
+                });
+              }}
+              className="flex-1 py-4 border border-[#262626] text-white font-medium rounded-xl hover:bg-[#141414] transition-colors"
+            >
+              Create Another
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center px-6 py-12">
@@ -98,6 +225,27 @@ export default function LaunchPage() {
                 <span className="absolute right-0 bottom-4 text-[#737373]">
                   SOL
                 </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-[#737373] uppercase tracking-wider mb-3">
+                Duration (Days)
+              </label>
+              <div className="flex gap-3">
+                {['7', '14', '30', '60'].map((days) => (
+                  <button
+                    key={days}
+                    onClick={() => setFormData({ ...formData, durationDays: days })}
+                    className={`flex-1 py-3 rounded-lg border transition-colors ${
+                      formData.durationDays === days
+                        ? 'border-white bg-white/10 text-white'
+                        : 'border-[#262626] text-[#737373] hover:border-[#404040]'
+                    }`}
+                  >
+                    {days} days
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -164,8 +312,10 @@ export default function LaunchPage() {
                     setFormData({ ...formData, title: e.target.value })
                   }
                   placeholder="Enter campaign name"
+                  maxLength={64}
                   className="w-full bg-transparent text-white text-lg border-b border-[#262626] pb-3 focus:border-[#404040] transition-colors placeholder-[#404040]"
                 />
+                <span className="text-xs text-[#737373] mt-1 block">{formData.title.length}/64</span>
               </div>
 
               <div>
@@ -179,8 +329,10 @@ export default function LaunchPage() {
                   }
                   placeholder="Describe your campaign..."
                   rows={4}
+                  maxLength={256}
                   className="w-full bg-[#141414] text-white border border-[#262626] rounded-lg p-4 focus:border-[#404040] transition-colors placeholder-[#404040] resize-none"
                 />
+                <span className="text-xs text-[#737373] mt-1 block">{formData.description.length}/256</span>
               </div>
             </div>
           </div>
@@ -210,19 +362,41 @@ export default function LaunchPage() {
                 </span>
               </div>
 
-              <div>
-                <span className="text-xs text-[#737373] uppercase tracking-wider">
-                  Security Level
-                </span>
-                <div className="flex items-center gap-2 mt-2">
-                  {formData.privacyLevel === 'PUBLIC' && <Eye className="w-4 h-4 text-[#737373]" />}
-                  {formData.privacyLevel === 'SEMI' && <EyeOff className="w-4 h-4 text-[#737373]" />}
-                  {formData.privacyLevel === 'PRIVATE' && <Lock className="w-4 h-4 text-[#737373]" />}
-                  <span className="text-white">
-                    {privacyLabels[formData.privacyLevel]}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <span className="text-xs text-[#737373] uppercase tracking-wider">
+                    Security Level
                   </span>
+                  <div className="flex items-center gap-2 mt-2">
+                    {formData.privacyLevel === 'PUBLIC' && <Eye className="w-4 h-4 text-[#737373]" />}
+                    {formData.privacyLevel === 'SEMI' && <EyeOff className="w-4 h-4 text-[#737373]" />}
+                    {formData.privacyLevel === 'PRIVATE' && <Lock className="w-4 h-4 text-[#737373]" />}
+                    <span className="text-white">
+                      {privacyLabels[formData.privacyLevel]}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs text-[#737373] uppercase tracking-wider">
+                    Duration
+                  </span>
+                  <p className="text-white mt-2">{formData.durationDays} days</p>
                 </div>
               </div>
+
+              {!connected && (
+                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mt-4">
+                  <p className="text-yellow-400 text-sm">
+                    Connect your wallet to launch the campaign on Solana devnet
+                  </p>
+                </div>
+              )}
+
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mt-4">
+                  <p className="text-red-400 text-sm">{error}</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -232,7 +406,8 @@ export default function LaunchPage() {
           {step > 1 && (
             <button
               onClick={handleBack}
-              className="p-4 border border-[#262626] rounded-xl hover:bg-[#141414] transition-colors"
+              disabled={isLaunching}
+              className="p-4 border border-[#262626] rounded-xl hover:bg-[#141414] transition-colors disabled:opacity-50"
             >
               <ArrowLeft className="w-5 h-5 text-white" />
             </button>
@@ -249,9 +424,19 @@ export default function LaunchPage() {
           ) : (
             <button
               onClick={handleLaunch}
-              className="flex-1 py-4 bg-white text-black font-medium rounded-xl hover:bg-gray-100 transition-colors"
+              disabled={isLaunching}
+              className="flex-1 py-4 bg-white text-black font-medium rounded-xl hover:bg-gray-100 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              Launch Campaign
+              {isLaunching ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Creating on-chain...
+                </>
+              ) : connected ? (
+                'Launch Campaign'
+              ) : (
+                'Connect Wallet to Launch'
+              )}
             </button>
           )}
         </div>

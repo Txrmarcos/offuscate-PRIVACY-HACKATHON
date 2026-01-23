@@ -17,20 +17,21 @@ function formatNumber(num: number): string {
 
 export function CampaignCard({ campaign, onSupport }: CampaignCardProps) {
   const progress = Math.round((campaign.raised / campaign.goal) * 100);
+  const privacyLevel = campaign.privacyLevel || campaign.privacy || 'SEMI';
 
   return (
     <div className="p-6 bg-[#141414] border border-[#262626] rounded-xl flex flex-col">
       <div className="flex items-start justify-between mb-3">
         <span
           className={`px-3 py-1 text-xs font-medium rounded-full ${
-            campaign.privacyLevel === 'PRIVATE'
+            privacyLevel === 'PRIVATE'
               ? 'bg-white text-black'
-              : campaign.privacyLevel === 'SEMI'
+              : privacyLevel === 'SEMI'
               ? 'bg-[#262626] text-white'
               : 'bg-[#262626] text-[#737373]'
           }`}
         >
-          {PRIVACY_LABELS[campaign.privacyLevel]}
+          {PRIVACY_LABELS[privacyLevel]}
         </span>
         <div className="flex items-center gap-1 text-[#737373] text-sm">
           <Users className="w-4 h-4" />

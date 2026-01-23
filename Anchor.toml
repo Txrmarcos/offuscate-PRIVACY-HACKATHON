@@ -6,7 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-offuscate = "4AVSsa2pgPoVSNs3KmXJZvXq8QLtBwXzq3VFACGKajTq"
+offuscate = "5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq"
+
+[programs.devnet]
+offuscate = "5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq"
 
 [registry]
 url = "https://api.apr.dev"

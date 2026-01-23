@@ -25,6 +25,7 @@ import {
   isStealthAddressForUs,
   deriveStealthSpendingKey,
 } from '../lib/stealth';
+import { useProgram, CampaignData } from '../lib/program';
 
 // Devnet connection
 const DEVNET_RPC = 'https://api.devnet.solana.com';
@@ -40,9 +41,19 @@ interface StealthPayment {
   canSpend: boolean;
 }
 
+interface MyCampaign {
+  id: string;
+  title: string;
+  goal: number;
+  raised: number;
+  donorCount: number;
+  vaultBalance: number;
+}
+
 export default function DashboardPage() {
   const { connected, publicKey, signTransaction } = useWallet();
   const { stealthKeys, metaAddressString, isLoading: keysLoading, deriveKeysFromWallet } = useStealth();
+  const { listCampaigns, fetchVaultBalance, withdraw: programWithdraw } = useProgram();
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showBalance, setShowBalance] = useState(false);
@@ -52,9 +63,69 @@ export default function DashboardPage() {
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
   const [lastScan, setLastScan] = useState<Date | null>(null);
 
+  // Campaign management
+  const [myCampaigns, setMyCampaigns] = useState<MyCampaign[]>([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [withdrawingCampaign, setWithdrawingCampaign] = useState<string | null>(null);
+
   // Calculate totals
   const totalBalance = payments.reduce((sum, p) => sum + p.amount, 0);
   const spendablePayments = payments.filter(p => p.canSpend);
+  const totalCampaignBalance = myCampaigns.reduce((sum, c) => sum + c.vaultBalance, 0);
+
+  // Load user's campaigns
+  const loadMyCampaigns = useCallback(async () => {
+    if (!publicKey) return;
+
+    setLoadingCampaigns(true);
+    try {
+      const allCampaigns = await listCampaigns();
+      const owned: MyCampaign[] = [];
+
+      for (const { account } of allCampaigns) {
+        if (account.owner.toBase58() === publicKey.toBase58()) {
+          const vaultBalance = await fetchVaultBalance(account.campaignId);
+          owned.push({
+            id: account.campaignId,
+            title: account.title,
+            goal: account.goal,
+            raised: account.totalRaised,
+            donorCount: account.donorCount,
+            vaultBalance,
+          });
+        }
+      }
+
+      setMyCampaigns(owned);
+    } catch (err) {
+      console.error('Failed to load campaigns:', err);
+    } finally {
+      setLoadingCampaigns(false);
+    }
+  }, [publicKey, listCampaigns, fetchVaultBalance]);
+
+  // Withdraw from campaign
+  const withdrawFromCampaign = async (campaignId: string, amount: number) => {
+    if (!publicKey || amount <= 0) return;
+
+    setWithdrawingCampaign(campaignId);
+    try {
+      await programWithdraw(campaignId, amount);
+      // Reload campaigns to update balances
+      await loadMyCampaigns();
+    } catch (err) {
+      console.error('Withdraw failed:', err);
+    } finally {
+      setWithdrawingCampaign(null);
+    }
+  };
+
+  // Load campaigns on mount
+  useEffect(() => {
+    if (publicKey) {
+      loadMyCampaigns();
+    }
+  }, [publicKey, loadMyCampaigns]);
 
   // Copy to clipboard
   const handleCopy = async (text: string) => {
@@ -357,6 +428,81 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* My Campaigns */}
+        {myCampaigns.length > 0 && (
+          <div className="mb-10">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-white">My Campaigns</h2>
+              <button
+                onClick={loadMyCampaigns}
+                disabled={loadingCampaigns}
+                className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1"
+              >
+                {loadingCampaigns ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                Refresh
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {myCampaigns.map((campaign) => (
+                <div
+                  key={campaign.id}
+                  className="p-5 bg-[#141414] border border-[#262626] rounded-2xl"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-white font-medium">{campaign.title}</h3>
+                      <p className="text-sm text-[#737373]">
+                        {campaign.donorCount} donor{campaign.donorCount !== 1 ? 's' : ''} • Goal: {campaign.goal} SOL
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-white">
+                        {campaign.vaultBalance.toFixed(4)} SOL
+                      </div>
+                      <p className="text-xs text-[#737373]">Available to withdraw</p>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="mb-4">
+                    <div className="h-2 bg-[#262626] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-purple-500 to-purple-600 rounded-full"
+                        style={{ width: `${Math.min(100, (campaign.vaultBalance / campaign.goal) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {campaign.vaultBalance > 0 ? (
+                    <button
+                      onClick={() => withdrawFromCampaign(campaign.id, campaign.vaultBalance)}
+                      disabled={withdrawingCampaign === campaign.id}
+                      className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium rounded-xl flex items-center justify-center gap-2"
+                    >
+                      {withdrawingCampaign === campaign.id ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Withdrawing...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" />
+                          Withdraw {campaign.vaultBalance.toFixed(4)} SOL
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <div className="text-center py-3 text-[#737373] text-sm">
+                      No funds to withdraw
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Recent Activity */}
         <div>
