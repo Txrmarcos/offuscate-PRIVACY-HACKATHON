@@ -53,7 +53,7 @@ interface MyCampaign {
 export default function DashboardPage() {
   const { connected, publicKey, signTransaction } = useWallet();
   const { stealthKeys, metaAddressString, isLoading: keysLoading, deriveKeysFromWallet } = useStealth();
-  const { listCampaigns, fetchVaultBalance, withdraw: programWithdraw } = useProgram();
+  const { listCampaigns, fetchVaultBalance, withdraw: programWithdraw, closeCampaign } = useProgram();
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showBalance, setShowBalance] = useState(false);
@@ -104,17 +104,24 @@ export default function DashboardPage() {
     }
   }, [publicKey, listCampaigns, fetchVaultBalance]);
 
-  // Withdraw from campaign
+  // Withdraw from campaign and close it
   const withdrawFromCampaign = async (campaignId: string, amount: number) => {
     if (!publicKey || amount <= 0) return;
 
     setWithdrawingCampaign(campaignId);
     try {
+      // Withdraw funds
       await programWithdraw(campaignId, amount);
-      // Reload campaigns to update balances
-      await loadMyCampaigns();
+
+      // Close the campaign after withdraw
+      await closeCampaign(campaignId);
+
+      // Remove from local state immediately
+      setMyCampaigns(prev => prev.filter(c => c.id !== campaignId));
     } catch (err) {
       console.error('Withdraw failed:', err);
+      // Reload campaigns in case of partial success
+      await loadMyCampaigns();
     } finally {
       setWithdrawingCampaign(null);
     }

@@ -46,6 +46,9 @@ export default function ExplorePage() {
 
       const uiCampaigns: Campaign[] = [];
       for (const { pubkey, account } of onChainCampaigns) {
+        // Only show active campaigns
+        if (account.status !== 'Active') continue;
+
         try {
           const vaultBalance = await fetchVaultBalance(account.campaignId);
           uiCampaigns.push(toUICampaign(pubkey, account, vaultBalance));
