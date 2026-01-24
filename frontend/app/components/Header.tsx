@@ -7,7 +7,8 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 
 const navLinks = [
-  { href: '/explore', label: 'Explore' },
+  { href: '/explore', label: 'Campaigns' },
+  { href: '/mixer', label: 'ShadowMix' },
   { href: '/launch', label: 'Launch' },
   { href: '/dashboard', label: 'Dashboard' },
 ];

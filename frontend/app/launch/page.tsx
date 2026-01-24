@@ -1,7 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Eye, EyeOff, Lock, Loader2, CheckCircle, ExternalLink } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Lock,
+  Loader2,
+  CheckCircle,
+  ExternalLink,
+  Sparkles,
+  Shield,
+  Users,
+  Target,
+  Zap,
+  Clock,
+  Binary,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
@@ -15,28 +31,35 @@ const privacyOptions = [
   {
     level: 'PUBLIC' as PrivacyLevel,
     title: 'Public',
-    description: 'Standard transfer. Fully visible on explorer.',
+    subtitle: 'Transparent',
+    description: 'Full visibility. Best for maximum trust.',
     icon: Eye,
+    features: ['Visible on explorer', 'Donor names shown', 'Full transparency'],
   },
   {
     level: 'SEMI' as PrivacyLevel,
     title: 'Semi-Private',
-    description: 'Stealth address relayer. Sender hidden.',
-    icon: EyeOff,
+    subtitle: 'Balanced',
+    description: 'Stealth addresses hide sender identity.',
+    icon: Shield,
+    features: ['Sender hidden', 'Amount visible', 'Relayer protected'],
+    recommended: true,
   },
   {
-    level: 'PRIVATE' as PrivacyLevel,
-    title: 'Fully Private',
-    description: 'Zero-Knowledge. Sender, Receiver, Amount hidden.',
-    icon: Lock,
+    level: 'ZK_COMPRESSED' as PrivacyLevel,
+    title: 'ZK Compressed',
+    subtitle: 'Maximum Privacy',
+    description: 'Zero-knowledge proofs. Complete anonymity.',
+    icon: Binary,
+    features: ['Sender hidden', 'Amount hidden', 'ZK verified'],
   },
 ];
 
 const privacyLabels: Record<PrivacyLevel, string> = {
-  PUBLIC: 'Public Mode',
-  SEMI: 'Semi Mode',
-  PRIVATE: 'Private Mode',
-  ZK_COMPRESSED: 'ZK Compressed Mode',
+  PUBLIC: 'Public',
+  SEMI: 'Semi-Private',
+  PRIVATE: 'Fully Private',
+  ZK_COMPRESSED: 'ZK Compressed',
 };
 
 function generateCampaignId(): string {
@@ -125,28 +148,52 @@ export default function LaunchPage() {
   if (launchSuccess && txSignature && campaignId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 py-20">
-        <div className="w-full max-w-md text-center">
-          <div className="w-20 h-20 bg-green-400/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-400/20">
-            <CheckCircle className="w-10 h-10 text-green-400" />
+        <div className="w-full max-w-lg text-center">
+          {/* Success animation */}
+          <div className="relative mb-8">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-32 h-32 rounded-full bg-white/[0.03] animate-ping" />
+            </div>
+            <div className="relative w-24 h-24 bg-white/[0.05] rounded-full flex items-center justify-center mx-auto border border-white/[0.1]">
+              <CheckCircle className="w-12 h-12 text-white" />
+            </div>
           </div>
 
-          <h1 className="text-3xl font-semibold text-white mb-2">Campaign Launched!</h1>
-          <p className="text-white/40 mb-8">
-            Your campaign is now live on Solana devnet
+          <h1 className="text-4xl font-bold text-white mb-3">You're Live!</h1>
+          <p className="text-white/40 mb-8 text-lg">
+            Your campaign is now accepting private donations on Solana
           </p>
 
-          <div className="rounded-2xl bg-white/[0.02] border border-white/[0.05] p-6 mb-6 text-left">
-            <div className="mb-4">
-              <span className="text-[10px] text-white/25 uppercase tracking-wide">Campaign ID</span>
-              <p className="text-white font-mono mt-1">{campaignId}</p>
+          {/* Campaign preview */}
+          <div className="rounded-2xl bg-white/[0.02] border border-white/[0.08] p-6 mb-6 text-left">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <span className="text-[10px] text-white/30 uppercase tracking-wider">Campaign</span>
+                <h3 className="text-xl font-semibold text-white mt-1">
+                  {formData.title || 'Untitled Campaign'}
+                </h3>
+              </div>
+              <div className="px-3 py-1 rounded-lg bg-white/[0.05] border border-white/[0.1]">
+                <span className="text-xs text-white/60">{privacyLabels[formData.privacyLevel]}</span>
+              </div>
             </div>
-            <div className="mb-4">
-              <span className="text-[10px] text-white/25 uppercase tracking-wide">Title</span>
-              <p className="text-white mt-1">{formData.title || 'Untitled Campaign'}</p>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="p-3 rounded-xl bg-white/[0.02]">
+                <Target className="w-4 h-4 text-white/30 mb-1" />
+                <div className="text-xl font-bold text-white">{formData.goal} SOL</div>
+                <span className="text-[10px] text-white/30 uppercase">Goal</span>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.02]">
+                <Clock className="w-4 h-4 text-white/30 mb-1" />
+                <div className="text-xl font-bold text-white">{formData.durationDays}</div>
+                <span className="text-[10px] text-white/30 uppercase">Days</span>
+              </div>
             </div>
-            <div>
-              <span className="text-[10px] text-white/25 uppercase tracking-wide">Goal</span>
-              <p className="text-white font-mono mt-1">{formData.goal} SOL</p>
+
+            <div className="p-3 rounded-xl bg-white/[0.02] font-mono text-sm">
+              <span className="text-white/30">ID: </span>
+              <span className="text-white">{campaignId}</span>
             </div>
           </div>
 
@@ -154,9 +201,9 @@ export default function LaunchPage() {
             href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-white/40 hover:text-white mb-8 text-sm"
+            className="inline-flex items-center gap-2 text-white/40 hover:text-white mb-8 text-sm transition-colors"
           >
-            View on Explorer
+            View transaction on Solana Explorer
             <ExternalLink className="w-4 h-4" />
           </a>
 
@@ -165,7 +212,7 @@ export default function LaunchPage() {
               onClick={() => router.push('/explore')}
               className="flex-1 py-4 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all active:scale-[0.98]"
             >
-              View Campaigns
+              View All Campaigns
             </button>
             <button
               onClick={() => {
@@ -190,257 +237,379 @@ export default function LaunchPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center px-6 py-20">
-      <div className="w-full max-w-3xl">
-        {/* Progress Steps */}
-        <div className="flex gap-2 mb-16">
-          {Array.from({ length: TOTAL_STEPS }).map((_, index) => (
-            <div
-              key={index}
-              className={`h-1 flex-1 rounded-full transition-colors ${
-                index < step ? 'bg-white' : 'bg-white/[0.06]'
-              }`}
-            />
-          ))}
+    <div className="min-h-screen flex flex-col">
+      {/* Header with progress */}
+      <div className="px-6 pt-8">
+        <div className="max-w-3xl mx-auto">
+          {/* Step indicator */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-white/30">Step {step} of {TOTAL_STEPS}</span>
+            <span className="text-sm text-white/30">{Math.round((step / TOTAL_STEPS) * 100)}%</span>
+          </div>
+          <div className="flex gap-1.5">
+            {Array.from({ length: TOTAL_STEPS }).map((_, index) => (
+              <div
+                key={index}
+                className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                  index < step ? 'bg-white' : 'bg-white/[0.08]'
+                }`}
+              />
+            ))}
+          </div>
         </div>
+      </div>
 
-        {/* Step 1: Set Target */}
-        {step === 1 && (
-          <div>
-            <h1 className="text-3xl font-semibold text-white mb-2">Set the target</h1>
-            <p className="text-white/40 mb-10">How much SOL do you need?</p>
+      {/* Main content */}
+      <div className="flex-1 flex flex-col items-center px-6 py-12">
+        <div className="w-full max-w-3xl">
+          {/* Step 1: Set Target */}
+          {step === 1 && (
+            <div>
+              <div className="mb-10">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] mb-4">
+                  <Target className="w-4 h-4 text-white/40" />
+                  <span className="text-xs text-white/40">Funding Goal</span>
+                </div>
+                <h1 className="text-4xl font-bold text-white mb-3">
+                  How much do you need?
+                </h1>
+                <p className="text-white/40 text-lg">
+                  Set a realistic goal. You can always exceed it.
+                </p>
+              </div>
 
-            <div className="mb-8">
-              <label className="block text-[10px] text-white/25 uppercase tracking-wide mb-3">
-                Funding Goal (SOL)
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={formData.goal}
-                  onChange={(e) =>
-                    setFormData({ ...formData, goal: e.target.value })
-                  }
-                  placeholder="0.00"
-                  className="w-full bg-transparent text-white text-4xl font-light border-b border-white/[0.1] pb-4 focus:border-white/[0.2] transition-colors font-mono"
-                />
-                <span className="absolute right-0 bottom-4 text-white/30">
-                  SOL
-                </span>
+              <div className="mb-10">
+                <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-3">
+                  Target Amount
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={formData.goal}
+                    onChange={(e) =>
+                      setFormData({ ...formData, goal: e.target.value })
+                    }
+                    placeholder="0.00"
+                    className="w-full bg-transparent text-white text-5xl font-light border-b-2 border-white/[0.1] pb-4 focus:border-white/[0.3] transition-colors font-mono placeholder-white/10"
+                  />
+                  <span className="absolute right-0 bottom-5 text-2xl text-white/30 font-light">
+                    SOL
+                  </span>
+                </div>
+                <p className="text-white/20 text-sm mt-2">
+                  ≈ ${((parseFloat(formData.goal) || 0) * 150).toFixed(2)} USD
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-4">
+                  Campaign Duration
+                </label>
+                <div className="grid grid-cols-4 gap-3">
+                  {['7', '14', '30', '60'].map((days) => (
+                    <button
+                      key={days}
+                      onClick={() => setFormData({ ...formData, durationDays: days })}
+                      className={`relative py-4 rounded-2xl border transition-all ${
+                        formData.durationDays === days
+                          ? 'border-white bg-white/[0.05] text-white'
+                          : 'border-white/[0.08] text-white/40 hover:border-white/[0.15] hover:text-white/60'
+                      }`}
+                    >
+                      <div className="text-2xl font-semibold">{days}</div>
+                      <div className="text-xs text-white/30">days</div>
+                      {days === '30' && formData.durationDays !== '30' && (
+                        <span className="absolute -top-2 -right-2 px-2 py-0.5 bg-white text-black text-[9px] font-bold rounded-full">
+                          POPULAR
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
+          )}
 
+          {/* Step 2: Privacy Level */}
+          {step === 2 && (
             <div>
-              <label className="block text-[10px] text-white/25 uppercase tracking-wide mb-3">
-                Duration (Days)
-              </label>
-              <div className="flex gap-3">
-                {['7', '14', '30', '60'].map((days) => (
+              <div className="mb-10">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] mb-4">
+                  <Shield className="w-4 h-4 text-white/40" />
+                  <span className="text-xs text-white/40">Privacy Settings</span>
+                </div>
+                <h1 className="text-4xl font-bold text-white mb-3">
+                  How private should donations be?
+                </h1>
+                <p className="text-white/40 text-lg">
+                  Choose the level of anonymity for your supporters.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {privacyOptions.map((option) => (
                   <button
-                    key={days}
-                    onClick={() => setFormData({ ...formData, durationDays: days })}
-                    className={`flex-1 py-3 rounded-xl border transition-all ${
-                      formData.durationDays === days
-                        ? 'border-white bg-white/[0.05] text-white'
-                        : 'border-white/[0.06] text-white/40 hover:border-white/[0.1]'
+                    key={option.level}
+                    onClick={() =>
+                      setFormData({ ...formData, privacyLevel: option.level })
+                    }
+                    className={`relative w-full p-6 rounded-2xl border text-left transition-all ${
+                      formData.privacyLevel === option.level
+                        ? 'border-white bg-white/[0.05]'
+                        : 'border-white/[0.08] hover:border-white/[0.15]'
                     }`}
                   >
-                    {days} days
+                    {option.recommended && (
+                      <span className="absolute -top-3 left-6 px-3 py-1 bg-white text-black text-[10px] font-bold rounded-full">
+                        RECOMMENDED
+                      </span>
+                    )}
+
+                    <div className="flex items-start gap-4">
+                      <div
+                        className={`p-3 rounded-xl ${
+                          formData.privacyLevel === option.level
+                            ? 'bg-white/[0.1]'
+                            : 'bg-white/[0.03]'
+                        }`}
+                      >
+                        <option.icon
+                          className={`w-6 h-6 ${
+                            formData.privacyLevel === option.level
+                              ? 'text-white'
+                              : 'text-white/40'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg font-semibold text-white">
+                            {option.title}
+                          </span>
+                          <span className="text-xs text-white/30 px-2 py-0.5 rounded bg-white/[0.05]">
+                            {option.subtitle}
+                          </span>
+                        </div>
+                        <p className="text-white/40 text-sm mb-3">
+                          {option.description}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {option.features.map((feature) => (
+                            <span
+                              key={feature}
+                              className="text-[10px] px-2 py-1 rounded-lg bg-white/[0.03] text-white/40"
+                            >
+                              {feature}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {formData.privacyLevel === option.level && (
+                        <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center">
+                          <CheckCircle className="w-4 h-4 text-black" />
+                        </div>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Step 2: Privacy Level */}
-        {step === 2 && (
-          <div>
-            <h1 className="text-3xl font-semibold text-white mb-2">Privacy level</h1>
-            <p className="text-white/40 mb-10">
-              Choose how transactions appear on-chain.
-            </p>
-
-            <div className="grid grid-cols-3 gap-3">
-              {privacyOptions.map((option) => (
-                <button
-                  key={option.level}
-                  onClick={() =>
-                    setFormData({ ...formData, privacyLevel: option.level })
-                  }
-                  className={`relative p-5 rounded-2xl border text-left transition-all h-full ${
-                    formData.privacyLevel === option.level
-                      ? 'border-white bg-white/[0.05]'
-                      : 'border-white/[0.06] hover:border-white/[0.1]'
-                  }`}
-                >
-                  {formData.privacyLevel === option.level && (
-                    <span className="absolute top-3 right-3 w-2 h-2 bg-green-400 rounded-full" />
-                  )}
-                  <option.icon
-                    className={`w-5 h-5 mb-4 ${
-                      formData.privacyLevel === option.level
-                        ? 'text-white'
-                        : 'text-white/30'
-                    }`}
-                  />
-                  <div className="text-white font-medium mb-2">
-                    {option.title}
-                  </div>
-                  <p className="text-white/40 text-sm">
-                    {option.description}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Campaign Details */}
-        {step === 3 && (
-          <div>
-            <h1 className="text-3xl font-semibold text-white mb-2">Campaign details</h1>
-            <p className="text-white/40 mb-10">Tell supporters about your mission.</p>
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-[10px] text-white/25 uppercase tracking-wide mb-3">
-                  Campaign Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) =>
-                    setFormData({ ...formData, title: e.target.value })
-                  }
-                  placeholder="Enter campaign name"
-                  maxLength={64}
-                  className="w-full bg-transparent text-white text-lg border-b border-white/[0.1] pb-3 focus:border-white/[0.2] transition-colors placeholder-white/20"
-                />
-                <span className="text-[10px] text-white/25 mt-1 block">{formData.title.length}/64</span>
+          {/* Step 3: Campaign Details */}
+          {step === 3 && (
+            <div>
+              <div className="mb-10">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] mb-4">
+                  <Sparkles className="w-4 h-4 text-white/40" />
+                  <span className="text-xs text-white/40">Campaign Story</span>
+                </div>
+                <h1 className="text-4xl font-bold text-white mb-3">
+                  Tell your story
+                </h1>
+                <p className="text-white/40 text-lg">
+                  A compelling story inspires more support.
+                </p>
               </div>
 
-              <div>
-                <label className="block text-[10px] text-white/25 uppercase tracking-wide mb-3">
-                  Description
-                </label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
-                  placeholder="Describe your campaign..."
-                  rows={4}
-                  maxLength={256}
-                  className="w-full bg-white/[0.02] text-white border border-white/[0.06] rounded-xl p-4 focus:border-white/[0.1] transition-colors placeholder-white/20 resize-none"
-                />
-                <span className="text-[10px] text-white/25 mt-1 block">{formData.description.length}/256</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Finalize */}
-        {step === 4 && (
-          <div>
-            <h1 className="text-3xl font-semibold text-white mb-2">Finalize</h1>
-            <p className="text-white/40 mb-10">Review and launch your campaign.</p>
-
-            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[10px] text-white/25 uppercase tracking-wide">
-                  Campaign
-                </span>
-                <span className="text-[10px] text-white/25 uppercase tracking-wide">
-                  Goal
-                </span>
-              </div>
-              <div className="flex items-center justify-between mb-6">
-                <span className="text-white font-medium">
-                  {formData.title || 'Untitled Campaign'}
-                </span>
-                <span className="text-white font-mono">
-                  {formData.goal || '0'} SOL
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between mb-6">
+              <div className="space-y-8">
                 <div>
-                  <span className="text-[10px] text-white/25 uppercase tracking-wide">
-                    Security Level
-                  </span>
-                  <div className="flex items-center gap-2 mt-2">
-                    {formData.privacyLevel === 'PUBLIC' && <Eye className="w-4 h-4 text-white/40" />}
-                    {formData.privacyLevel === 'SEMI' && <EyeOff className="w-4 h-4 text-white/40" />}
-                    {formData.privacyLevel === 'PRIVATE' && <Lock className="w-4 h-4 text-white/40" />}
-                    <span className="text-white">
-                      {privacyLabels[formData.privacyLevel]}
-                    </span>
+                  <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-3">
+                    Campaign Title
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) =>
+                      setFormData({ ...formData, title: e.target.value })
+                    }
+                    placeholder="Give your campaign a memorable name"
+                    maxLength={64}
+                    className="w-full bg-transparent text-white text-2xl font-medium border-b-2 border-white/[0.1] pb-3 focus:border-white/[0.3] transition-colors placeholder-white/20"
+                  />
+                  <div className="flex justify-between mt-2">
+                    <span className="text-xs text-white/20">Make it catchy and clear</span>
+                    <span className="text-xs text-white/30">{formData.title.length}/64</span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-white/25 uppercase tracking-wide">
-                    Duration
-                  </span>
-                  <p className="text-white mt-2">{formData.durationDays} days</p>
+
+                <div>
+                  <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-3">
+                    Description
+                  </label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
+                    placeholder="Explain why you're raising funds and how they'll be used..."
+                    rows={5}
+                    maxLength={256}
+                    className="w-full bg-white/[0.02] text-white text-base border border-white/[0.08] rounded-2xl p-4 focus:border-white/[0.15] transition-colors placeholder-white/20 resize-none leading-relaxed"
+                  />
+                  <div className="flex justify-between mt-2">
+                    <span className="text-xs text-white/20">Be specific about your needs</span>
+                    <span className="text-xs text-white/30">{formData.description.length}/256</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Finalize */}
+          {step === 4 && (
+            <div>
+              <div className="mb-10">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] mb-4">
+                  <Zap className="w-4 h-4 text-white/40" />
+                  <span className="text-xs text-white/40">Final Review</span>
+                </div>
+                <h1 className="text-4xl font-bold text-white mb-3">
+                  Ready to launch?
+                </h1>
+                <p className="text-white/40 text-lg">
+                  Review your campaign before going live on Solana.
+                </p>
+              </div>
+
+              {/* Preview card */}
+              <div className="rounded-2xl bg-white/[0.02] border border-white/[0.08] overflow-hidden mb-6">
+                <div className="p-6 border-b border-white/[0.06]">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-white/[0.05]">
+                        {formData.privacyLevel === 'PUBLIC' && <Eye className="w-5 h-5 text-white/60" />}
+                        {formData.privacyLevel === 'SEMI' && <Shield className="w-5 h-5 text-white/60" />}
+                        {(formData.privacyLevel === 'PRIVATE' || formData.privacyLevel === 'ZK_COMPRESSED') && (
+                          <Lock className="w-5 h-5 text-white/60" />
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-white/30 uppercase tracking-wider">
+                          {privacyLabels[formData.privacyLevel]} Campaign
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.05]">
+                      <Clock className="w-3 h-3 text-white/40" />
+                      <span className="text-xs text-white/50">{formData.durationDays} days</span>
+                    </div>
+                  </div>
+
+                  <h3 className="text-2xl font-semibold text-white mb-2">
+                    {formData.title || 'Untitled Campaign'}
+                  </h3>
+                  <p className="text-white/40 text-sm line-clamp-2">
+                    {formData.description || 'No description provided'}
+                  </p>
+                </div>
+
+                <div className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-white/30 uppercase tracking-wider">Goal</span>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-3xl font-bold text-white">{formData.goal || '0'}</span>
+                        <span className="text-white/40">SOL</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-white/30 uppercase tracking-wider">Network</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="w-2 h-2 rounded-full bg-white/50" />
+                        <span className="text-white">Solana Devnet</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {!connected && (
-                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 mt-4">
-                  <p className="text-yellow-400 text-sm">
-                    Connect your wallet to launch the campaign on Solana devnet
-                  </p>
+                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.08] mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-white/[0.05] flex items-center justify-center">
+                      <Lock className="w-5 h-5 text-white/40" />
+                    </div>
+                    <div>
+                      <p className="text-white font-medium">Wallet Required</p>
+                      <p className="text-white/40 text-sm">Connect your wallet to launch on Solana</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {error && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mt-4">
+                <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 mb-6">
                   <p className="text-red-400 text-sm">{error}</p>
                 </div>
               )}
             </div>
+          )}
+
+          {/* Navigation Buttons */}
+          <div className="flex gap-3 mt-12">
+            {step > 1 && (
+              <button
+                onClick={handleBack}
+                disabled={isLaunching}
+                className="p-4 border border-white/[0.08] rounded-2xl hover:bg-white/[0.03] transition-all disabled:opacity-50"
+              >
+                <ArrowLeft className="w-5 h-5 text-white" />
+              </button>
+            )}
+
+            {step < TOTAL_STEPS ? (
+              <button
+                onClick={handleNext}
+                className="flex-1 py-4 bg-white text-black font-medium rounded-2xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+              >
+                Continue
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                onClick={handleLaunch}
+                disabled={isLaunching}
+                className="flex-1 py-4 bg-white text-black font-medium rounded-2xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98]"
+              >
+                {isLaunching ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Deploying to Solana...
+                  </>
+                ) : connected ? (
+                  <>
+                    <Zap className="w-5 h-5" />
+                    Launch Campaign
+                  </>
+                ) : (
+                  'Connect Wallet to Launch'
+                )}
+              </button>
+            )}
           </div>
-        )}
-
-        {/* Navigation Buttons */}
-        <div className="flex gap-3 mt-12">
-          {step > 1 && (
-            <button
-              onClick={handleBack}
-              disabled={isLaunching}
-              className="p-4 border border-white/[0.06] rounded-xl hover:bg-white/[0.03] transition-all disabled:opacity-50"
-            >
-              <ArrowLeft className="w-5 h-5 text-white" />
-            </button>
-          )}
-
-          {step < TOTAL_STEPS ? (
-            <button
-              onClick={handleNext}
-              className="flex-1 py-4 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
-            >
-              Continue
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          ) : (
-            <button
-              onClick={handleLaunch}
-              disabled={isLaunching}
-              className="flex-1 py-4 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98]"
-            >
-              {isLaunching ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Creating on-chain...
-                </>
-              ) : connected ? (
-                'Launch Campaign'
-              ) : (
-                'Connect Wallet to Launch'
-              )}
-            </button>
-          )}
         </div>
       </div>
     </div>

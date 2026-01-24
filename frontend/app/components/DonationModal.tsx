@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Eye, EyeOff, Lock, ArrowRight, Loader2, CheckCircle, ExternalLink, Clock, Shield } from 'lucide-react';
+import { X, Eye, Lock, ArrowRight, Loader2, Binary, Info, Zap } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useConnection } from '@solana/wallet-adapter-react';
@@ -14,7 +14,6 @@ import {
 } from '@solana/web3.js';
 import { Campaign, PrivacyLevel } from '../lib/types';
 import { useProgram, getCampaignPDAs } from '../lib/program';
-import { ALLOWED_WITHDRAW_AMOUNTS, WITHDRAW_DELAY_SECONDS } from '../lib/program/client';
 import {
   generateStealthAddress,
   parseStealthMetaAddress,
@@ -22,57 +21,57 @@ import {
 import { privateDonation, type ShadowWireWallet } from '../lib/privacy/shadowWire';
 import { privateZKDonation, type LightWallet, isLightProtocolAvailable } from '../lib/privacy/lightProtocol';
 import { triggerOffuscation } from './WaveMeshBackground';
+import { FullScreenPrivacyAnimation } from './PrivacyGraphAnimation';
 
 const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-const POOL_AMOUNTS = [0.1, 0.5, 1.0];
 
 interface DonationModalProps {
   campaign: Campaign;
   onClose: () => void;
 }
 
+// Only show privacy options that ACTUALLY send to the campaign
 const privacyOptions: {
   level: PrivacyLevel;
   title: string;
   description: string;
   icon: typeof Eye;
   badge?: string;
+  tag?: string;
+  privacyScore: number;
 }[] = [
+  {
+    level: 'ZK_COMPRESSED',
+    title: 'ZK Private',
+    description: 'Light Protocol compression. Sender completely unlinked from donation.',
+    icon: Binary,
+    badge: 'Devnet',
+    tag: 'Recommended',
+    privacyScore: 95,
+  },
+  {
+    level: 'PRIVATE',
+    title: 'ShadowWire',
+    description: 'Bulletproofs ZK. Amount AND sender hidden.',
+    icon: Lock,
+    badge: 'Mainnet',
+    privacyScore: 100,
+  },
   {
     level: 'PUBLIC',
     title: 'Public',
     description: 'Standard transfer. Fully visible on explorer.',
     icon: Eye,
-  },
-  {
-    level: 'SEMI',
-    title: 'Privacy Pool',
-    description: 'Unlinkable. Funds mixed in pool with delay.',
-    icon: Shield,
-  },
-  {
-    level: 'ZK_COMPRESSED',
-    title: 'ZK Compressed',
-    description: 'Light Protocol ZK compression. Breaks sender link.',
-    icon: Lock,
-    badge: 'Devnet',
-  },
-  {
-    level: 'PRIVATE',
-    title: 'ShadowWire',
-    description: 'Bulletproofs ZK. Amount hidden.',
-    icon: Lock,
-    badge: 'Mainnet',
+    privacyScore: 0,
   },
 ];
 
 export function DonationModal({ campaign, onClose }: DonationModalProps) {
-  const [selectedPrivacy, setSelectedPrivacy] = useState<PrivacyLevel>('PUBLIC');
+  const [selectedPrivacy, setSelectedPrivacy] = useState<PrivacyLevel>('ZK_COMPRESSED');
   const [amount, setAmount] = useState('0.1');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDone, setIsDone] = useState(false);
   const [txSignature, setTxSignature] = useState<string | null>(null);
-  const [stealthAddress, setStealthAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [campaignMetaAddress, setCampaignMetaAddress] = useState<string | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
@@ -80,9 +79,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
   const { connected, publicKey, signTransaction, signMessage } = useWallet();
   const { connection } = useConnection();
   const { setVisible } = useWalletModal();
-  const { donate, fetchCampaign, isConnected, poolDeposit, fetchPoolStats, isPoolInitialized, initPool } = useProgram();
-  const [poolBalance, setPoolBalance] = useState<number | null>(null);
-  const [poolInitialized, setPoolInitialized] = useState(false);
+  const { donate, fetchCampaign, isConnected } = useProgram();
 
   useEffect(() => {
     const loadCampaignMeta = async () => {
@@ -100,24 +97,6 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
     };
     loadCampaignMeta();
   }, [campaign.id, fetchCampaign]);
-
-  useEffect(() => {
-    const checkPool = async () => {
-      try {
-        const initialized = await isPoolInitialized();
-        setPoolInitialized(initialized);
-        if (initialized) {
-          const stats = await fetchPoolStats();
-          if (stats) {
-            setPoolBalance(stats.currentBalance);
-          }
-        }
-      } catch (err) {
-        setPoolInitialized(false);
-      }
-    };
-    checkPool();
-  }, [isPoolInitialized, fetchPoolStats]);
 
   const handleDonate = async () => {
     if (!connected || !publicKey || !signTransaction) {
@@ -167,7 +146,6 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         triggerOffuscation();
 
       } else if (selectedPrivacy === 'ZK_COMPRESSED') {
-        // Light Protocol ZK Compressed donation
         const { vaultPda } = getCampaignPDAs(campaign.id);
 
         if (!signTransaction) {
@@ -191,24 +169,8 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         setIsDone(true);
         triggerOffuscation();
 
-      } else if (selectedPrivacy === 'SEMI') {
-        if (!poolInitialized) {
-          try {
-            await initPool();
-            setPoolInitialized(true);
-          } catch (err: any) {
-            if (!err.message?.includes('already in use')) {
-              throw err;
-            }
-          }
-        }
-
-        const sig = await poolDeposit(amountSol);
-        setTxSignature(sig);
-        setIsDone(true);
-        triggerOffuscation();
-
       } else {
+        // PUBLIC - direct donation to campaign vault
         const sig = await donate(campaign.id, amountSol);
         setTxSignature(sig);
         setIsDone(true);
@@ -223,71 +185,18 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
   };
 
   if (isDone && txSignature) {
-    const isPoolDonation = selectedPrivacy === 'SEMI';
-
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative w-full max-w-md bg-[#0a0a0a] border border-white/[0.06] rounded-2xl p-6 text-center">
-          <div className={`w-16 h-16 ${isPoolDonation ? 'bg-green-400/10 border-green-400/20' : 'bg-green-400/10 border-green-400/20'} border rounded-full flex items-center justify-center mx-auto mb-4`}>
-            {isPoolDonation ? (
-              <Shield className="w-8 h-8 text-green-400" />
-            ) : (
-              <CheckCircle className="w-8 h-8 text-green-400" />
-            )}
-          </div>
-
-          <h2 className="text-xl font-semibold text-white mb-2">
-            {isPoolDonation ? 'Privacy Pool Deposit!' :
-             stealthAddress ? 'Stealth Donation Sent!' : 'Donation Sent!'}
-          </h2>
-          <p className="text-white/40 mb-4">
-            {amount} SOL {isPoolDonation ? 'deposited to privacy pool' : `sent to ${campaign.title}`}
-          </p>
-
-          {isPoolDonation && (
-            <div className="bg-green-400/5 border border-green-400/10 rounded-xl p-4 mb-4 text-left">
-              <div className="flex items-center gap-2 mb-2">
-                <Clock className="w-4 h-4 text-green-400" />
-                <p className="text-green-400 text-sm font-medium">Unlinkable Donation</p>
-              </div>
-              <p className="text-white/40 text-xs mb-2">
-                Your donation is now mixed in the privacy pool. The link between your wallet and this campaign is broken.
-              </p>
-              <div className="flex items-center gap-2 text-xs text-white/30">
-                <span>Withdrawal delay:</span>
-                <span className="text-green-400 font-mono">{WITHDRAW_DELAY_SECONDS}s</span>
-              </div>
-            </div>
-          )}
-
-          {stealthAddress && (
-            <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 mb-4 text-left">
-              <p className="text-[10px] text-white/25 uppercase tracking-wide mb-1">Stealth Address</p>
-              <p className="text-white font-mono text-xs break-all">{stealthAddress}</p>
-            </div>
-          )}
-
-          <a
-            href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-white/40 hover:text-white mb-6 text-sm"
-          >
-            View on Explorer
-            <ExternalLink className="w-4 h-4" />
-          </a>
-
-          <button
-            onClick={onClose}
-            className="w-full py-3 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all active:scale-[0.98]"
-          >
-            Done
-          </button>
-        </div>
-      </div>
+      <FullScreenPrivacyAnimation
+        privacyLevel={selectedPrivacy}
+        txSignature={txSignature}
+        amount={amount}
+        campaignTitle={campaign.title}
+        onComplete={onClose}
+      />
     );
   }
+
+  const selectedOption = privacyOptions.find(o => o.level === selectedPrivacy);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -295,7 +204,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-2xl bg-[#0a0a0a] border border-white/[0.06] rounded-2xl p-6">
+      <div className="relative w-full max-w-2xl bg-[#0a0a0a] border border-white/[0.08] rounded-2xl p-6">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-white/30 hover:text-white transition-colors"
@@ -303,177 +212,137 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
           <X className="w-5 h-5" />
         </button>
 
-        <h2 className="text-xl font-semibold text-white mb-6">
+        <h2 className="text-xl font-semibold text-white mb-2">
           Support {campaign.title}
         </h2>
 
+        <p className="text-white/40 text-sm mb-6">
+          Your donation goes directly to the campaign vault.
+        </p>
+
         {/* Amount input */}
         <div className="mb-6">
-          <label className="block text-[10px] text-white/25 uppercase tracking-wide mb-2">
-            Amount (SOL) {selectedPrivacy === 'SEMI' && <span className="text-green-400">• Standardized amounts for privacy</span>}
+          <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-3">
+            Amount (SOL)
           </label>
           <div className="relative">
-            {selectedPrivacy === 'SEMI' ? (
-              <div className="flex gap-3">
-                {POOL_AMOUNTS.map((val) => (
-                  <button
-                    key={val}
-                    onClick={() => setAmount(val.toString())}
-                    className={`flex-1 py-4 rounded-xl text-lg font-mono transition-all ${
-                      amount === val.toString()
-                        ? 'bg-white text-black'
-                        : 'bg-white/[0.02] border border-white/[0.06] text-white/40 hover:text-white hover:border-white/[0.1]'
-                    }`}
-                  >
-                    {val} SOL
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <>
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0.001"
-                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl px-4 py-3 text-white text-lg font-mono focus:border-white/[0.1] transition-colors"
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-2">
-                  {['0.1', '0.5', '1'].map((val) => (
-                    <button
-                      key={val}
-                      onClick={() => setAmount(val)}
-                      className={`px-2 py-1 text-xs rounded-lg ${
-                        amount === val
-                          ? 'bg-white text-black'
-                          : 'bg-white/[0.04] text-white/40 hover:text-white'
-                      }`}
-                    >
-                      {val}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              step="0.01"
+              min="0.001"
+              className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl px-4 py-3 text-white text-lg font-mono focus:border-white/[0.15] transition-colors"
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-2">
+              {['0.1', '0.5', '1'].map((val) => (
+                <button
+                  key={val}
+                  onClick={() => setAmount(val)}
+                  className={`px-2.5 py-1 text-xs rounded-lg transition-all ${
+                    amount === val
+                      ? 'bg-white text-black'
+                      : 'bg-white/[0.05] text-white/40 hover:text-white'
+                  }`}
+                >
+                  {val}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Privacy level */}
         <div className="mb-6">
-          <label className="block text-[10px] text-white/25 uppercase tracking-wide mb-2">
+          <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-3">
             Privacy Level
           </label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {privacyOptions.map((option) => (
               <button
                 key={option.level}
                 onClick={() => setSelectedPrivacy(option.level)}
-                className={`relative p-4 rounded-xl border text-left transition-all h-full ${
+                className={`relative p-4 rounded-xl border text-left transition-all ${
                   selectedPrivacy === option.level
-                    ? option.level === 'ZK_COMPRESSED'
-                      ? 'border-purple-400 bg-purple-400/[0.05]'
-                      : 'border-white bg-white/[0.05]'
-                    : 'border-white/[0.06] hover:border-white/[0.1]'
+                    ? 'border-white bg-white/[0.05]'
+                    : 'border-white/[0.06] hover:border-white/[0.12]'
                 }`}
               >
+                {/* Selection indicator */}
                 {selectedPrivacy === option.level && (
-                  <span className={`absolute top-3 right-3 w-2 h-2 rounded-full ${
-                    option.level === 'ZK_COMPRESSED' ? 'bg-purple-400' : 'bg-green-400'
-                  }`} />
+                  <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-white" />
                 )}
+
+                {/* Badge */}
                 {option.badge && (
-                  <span className={`absolute top-3 right-8 text-[9px] px-1.5 py-0.5 rounded ${
-                    option.level === 'ZK_COMPRESSED'
-                      ? 'bg-purple-400/10 text-purple-400'
-                      : 'bg-white/10 text-white/40'
-                  }`}>
+                  <span className="absolute top-3 right-8 text-[9px] px-1.5 py-0.5 rounded bg-white/[0.08] text-white/50">
                     {option.badge}
                   </span>
                 )}
+
                 <option.icon
                   className={`w-5 h-5 mb-3 ${
-                    selectedPrivacy === option.level
-                      ? option.level === 'ZK_COMPRESSED' ? 'text-purple-400' : 'text-white'
-                      : 'text-white/30'
+                    selectedPrivacy === option.level ? 'text-white' : 'text-white/30'
                   }`}
                 />
-                <div className="text-white font-medium mb-1">{option.title}</div>
-                <p className="text-white/40 text-xs">{option.description}</p>
-                {option.level === 'ZK_COMPRESSED' && (
-                  <p className="text-purple-400 text-xs mt-1">Light Protocol</p>
-                )}
-                {option.level === 'SEMI' && (
-                  <p className="text-green-400 text-xs mt-1">Recommended</p>
+                <div className="text-white font-medium mb-1 text-sm">{option.title}</div>
+                <p className="text-white/40 text-[11px] leading-relaxed">{option.description}</p>
+
+                {/* Tag */}
+                {option.tag && (
+                  <p className="text-green-400/80 text-[10px] mt-2 uppercase tracking-wider">{option.tag}</p>
                 )}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Privacy Pool info box */}
-        {selectedPrivacy === 'SEMI' && (
-          <div className="mb-4 p-4 bg-green-400/5 border border-green-400/10 rounded-xl">
-            <div className="flex items-start gap-3">
-              <Shield className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-green-400 text-sm font-medium mb-1">Privacy Pool Donation</p>
-                <p className="text-white/40 text-xs mb-2">
-                  Your SOL goes into a mixed pool. The link between your wallet and this campaign is broken.
+        {/* Privacy score indicator */}
+        <div className="mb-4 p-4 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+          <div className="flex items-start gap-3">
+            {selectedOption && <selectedOption.icon className="w-5 h-5 text-white/50 flex-shrink-0 mt-0.5" />}
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-white text-sm font-medium">
+                  {selectedPrivacy === 'ZK_COMPRESSED' ? 'ZK Protected Donation' :
+                   selectedPrivacy === 'PRIVATE' ? 'Maximum Privacy Donation' :
+                   'Public Donation'}
                 </p>
-                <div className="flex flex-wrap gap-3 text-xs">
-                  <div className="flex items-center gap-1 text-white/30">
-                    <Clock className="w-3 h-3" />
-                    <span>Delay: <span className="text-green-400">{WITHDRAW_DELAY_SECONDS}s</span></span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-white/30">Privacy</span>
+                  <div className="w-20 h-1.5 bg-white/[0.1] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-white transition-all duration-500"
+                      style={{ width: `${selectedOption?.privacyScore || 0}%` }}
+                    />
                   </div>
-                  <div className="flex items-center gap-1 text-white/30">
-                    <span>Amounts: <span className="text-green-400">{POOL_AMOUNTS.join(', ')} SOL</span></span>
-                  </div>
-                  {poolBalance !== null && (
-                    <div className="flex items-center gap-1 text-white/30">
-                      <span>Pool: <span className="text-green-400 font-mono">{poolBalance.toFixed(2)} SOL</span></span>
-                    </div>
-                  )}
+                  <span className="text-xs font-mono text-white/60">{selectedOption?.privacyScore}%</span>
                 </div>
               </div>
+              <p className="text-white/40 text-xs">
+                {selectedPrivacy === 'ZK_COMPRESSED' ? (
+                  <>Light Protocol compresses your transfer into a Merkle tree. Your wallet address is <strong className="text-white/70">never linked</strong> to this campaign on-chain.</>
+                ) : selectedPrivacy === 'PRIVATE' ? (
+                  <>Bulletproofs ZK hides both your identity AND the amount. Maximum privacy for mainnet.</>
+                ) : (
+                  <>Standard Solana transfer. Your wallet will be directly visible as a donor on blockchain explorers.</>
+                )}
+              </p>
             </div>
           </div>
-        )}
+        </div>
 
-        {selectedPrivacy === 'ZK_COMPRESSED' && (
-          <div className="mb-4 p-4 bg-purple-400/5 border border-purple-400/10 rounded-xl">
-            <div className="flex items-start gap-3">
-              <Lock className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-purple-400 text-sm font-medium mb-1">Light Protocol ZK Compression</p>
-                <p className="text-white/40 text-xs mb-2">
-                  Your SOL is compressed into a Merkle tree. The sender-receiver link is broken via ZK proofs.
-                </p>
-                <div className="flex flex-wrap gap-3 text-xs">
-                  <div className="flex items-center gap-1 text-white/30">
-                    <Shield className="w-3 h-3" />
-                    <span>Privacy: <span className="text-purple-400">Groth16 ZK Proofs</span></span>
-                  </div>
-                  <div className="flex items-center gap-1 text-white/30">
-                    <span>Savings: <span className="text-purple-400">~99% on-chain</span></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {selectedPrivacy === 'PRIVATE' && (
-          <div className="mb-4 p-4 bg-green-400/5 border border-green-400/10 rounded-xl">
-            <p className="text-green-400 text-sm">
-              <strong>ShadowWire ZK Transfer</strong>: Your donation amount will be hidden using Bulletproofs (zero-knowledge proofs). <span className="text-white/40">(Mainnet only)</span>
-            </p>
-          </div>
-        )}
+        {/* Info about where funds go */}
+        <div className="mb-4 p-3 bg-green-500/5 border border-green-500/10 rounded-xl flex items-center gap-3">
+          <Zap className="w-4 h-4 text-green-400/60" />
+          <p className="text-[11px] text-green-400/70">
+            <strong>Direct to campaign:</strong> Your SOL goes straight to {campaign.title}'s vault. The campaign owner can withdraw anytime.
+          </p>
+        </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+          <div className="mb-4 p-3 bg-white/[0.02] border border-red-500/20 rounded-xl">
             <p className="text-red-400 text-sm">{error}</p>
           </div>
         )}
@@ -486,14 +355,12 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
           {isProcessing ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              {selectedPrivacy === 'ZK_COMPRESSED' ? 'Compressing & Transferring...' :
-               selectedPrivacy === 'PRIVATE' ? 'Generating ZK Proof...' :
-               selectedPrivacy === 'SEMI' ? 'Depositing to Pool...' : 'Processing...'}
+              {selectedPrivacy === 'ZK_COMPRESSED' ? 'Creating ZK Proof...' :
+               selectedPrivacy === 'PRIVATE' ? 'Generating Bulletproof...' : 'Processing...'}
             </>
           ) : connected ? (
             <>
-              {selectedPrivacy === 'SEMI' ? `Deposit ${amount} SOL to Pool` :
-               selectedPrivacy === 'ZK_COMPRESSED' ? `ZK Donate ${amount} SOL` : `Donate ${amount} SOL`}
+              Donate {amount} SOL
               <ArrowRight className="w-4 h-4" />
             </>
           ) : (

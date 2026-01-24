@@ -5,7 +5,6 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Send,
-  Eye,
   EyeOff,
   Copy,
   Check,
@@ -17,18 +16,14 @@ import {
   Wallet,
   Server,
   Bell,
-  Radio,
   Lock,
-  MoreHorizontal,
-  Zap,
-  Vault,
   ChevronLeft,
   ChevronRight,
   Filter,
   Trash2,
 } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { Connection, LAMPORTS_PER_SOL, PublicKey, Keypair } from '@solana/web3.js';
+import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { SendPaymentModal } from '../components/SendPaymentModal';
 import { useStealth } from '../lib/stealth/StealthContext';
@@ -37,14 +32,12 @@ import {
   deriveStealthSpendingKey,
 } from '../lib/stealth';
 import { useProgram } from '../lib/program';
-import { PrivateNote } from '../lib/privacy';
-import { ALLOWED_WITHDRAW_AMOUNTS } from '../lib/program/client';
 
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 const devnetConnection = new Connection(RPC_URL, 'confirmed');
 const MEMO_PROGRAM_ID = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
 
-type TabType = 'campaigns' | 'activity' | 'stealth' | 'pool';
+type TabType = 'campaigns' | 'activity' | 'stealth';
 type TxFilterType = 'all' | 'received' | 'sent' | 'stealth' | 'public';
 
 const ITEMS_PER_PAGE = 8;
@@ -100,11 +93,6 @@ export default function DashboardPage() {
     withdraw: programWithdraw,
     closeCampaign,
     setStealthMetaAddress,
-    fetchPoolStats,
-    privateDeposit,
-    privateWithdraw,
-    getUnspentPrivateNotes,
-    quickWithdrawAllToStealth,
   } = useProgram();
 
   const [activeTab, setActiveTab] = useState<TabType>('activity');
@@ -140,13 +128,6 @@ export default function DashboardPage() {
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
-  const [poolStats, setPoolStats] = useState<any>(null);
-  const [privateNotes, setPrivateNotes] = useState<PrivateNote[]>([]);
-  const [zkMode, setZkMode] = useState(true);
-  const [processing, setProcessing] = useState<string | null>(null);
-  const [mainWalletBalance, setMainWalletBalance] = useState(0);
-  const [stealthBalance, setStealthBalance] = useState(0);
-  const [stealthKeypair, setStealthKeypair] = useState<Keypair | null>(null);
 
   const totalBalance = payments.reduce((sum, p) => sum + p.amount, 0);
   const spendablePayments = payments.filter(p => p.canSpend);
@@ -154,39 +135,6 @@ export default function DashboardPage() {
   const stealthVolume = indexedTxs
     .filter(tx => tx.isStealth)
     .reduce((sum, tx) => sum + (tx.amount > 0 ? tx.amount : 0), 0) / LAMPORTS_PER_SOL;
-
-  useEffect(() => {
-    const generateDeterministicKeypair = async () => {
-      if (!publicKey) return;
-      try {
-        const { createHash } = await import('crypto');
-        const seed = createHash('sha256')
-          .update(publicKey.toBuffer())
-          .update('privacy_pool_stealth_v1')
-          .digest();
-        const keypair = Keypair.fromSeed(seed.slice(0, 32));
-        setStealthKeypair(keypair);
-      } catch (err) {
-        console.error('Failed to derive stealth keypair:', err);
-      }
-    };
-    generateDeterministicKeypair();
-  }, [publicKey]);
-
-  const fetchBalances = useCallback(async () => {
-    if (!publicKey) return;
-    try {
-      const balance = await devnetConnection.getBalance(publicKey);
-      setMainWalletBalance(balance / LAMPORTS_PER_SOL);
-    } catch {}
-
-    if (stealthKeypair) {
-      try {
-        const balance = await devnetConnection.getBalance(stealthKeypair.publicKey);
-        setStealthBalance(balance / LAMPORTS_PER_SOL);
-      } catch {}
-    }
-  }, [publicKey, stealthKeypair]);
 
   const fetchHeliusStatus = useCallback(async () => {
     try {
@@ -267,15 +215,6 @@ export default function DashboardPage() {
     }
   }, [publicKey, listCampaigns, fetchVaultBalance]);
 
-  const loadPoolData = useCallback(async () => {
-    try {
-      const stats = await fetchPoolStats();
-      setPoolStats(stats);
-      const notes = await getUnspentPrivateNotes();
-      setPrivateNotes(notes);
-    } catch {}
-  }, [fetchPoolStats, getUnspentPrivateNotes]);
-
   const enableStealthOnCampaign = async (campaignId: string) => {
     if (!metaAddressString) return;
     setEnablingStealth(campaignId);
@@ -319,59 +258,17 @@ export default function DashboardPage() {
     }
   };
 
-  const handlePrivateDeposit = async (amount: number) => {
-    setProcessing('deposit');
-    try {
-      await privateDeposit(amount);
-      await loadPoolData();
-      await fetchBalances();
-    } catch (err: any) {
-      console.error('Deposit failed:', err);
-    } finally {
-      setProcessing(null);
-    }
-  };
-
-  const handlePrivateWithdraw = async (note: PrivateNote) => {
-    if (!stealthKeypair) return;
-    setProcessing('withdraw');
-    try {
-      await privateWithdraw(note, stealthKeypair.publicKey);
-      await loadPoolData();
-      await fetchBalances();
-    } catch (err: any) {
-      console.error('Withdraw failed:', err);
-    } finally {
-      setProcessing(null);
-    }
-  };
-
-  const handleQuickWithdrawAll = async () => {
-    if (!stealthKeypair || privateNotes.length === 0) return;
-    setProcessing('quick-withdraw');
-    try {
-      await quickWithdrawAllToStealth(stealthKeypair);
-      await loadPoolData();
-      await fetchBalances();
-    } catch (err: any) {
-      console.error('Quick withdraw failed:', err);
-    } finally {
-      setProcessing(null);
-    }
-  };
 
   useEffect(() => {
     fetchHeliusStatus();
     fetchWebhookStats();
-    fetchBalances();
     if (publicKey) {
       loadMyCampaigns();
       fetchIndexedTransactions();
-      loadPoolData();
     }
     const webhookInterval = setInterval(fetchWebhookStats, 10000);
     return () => clearInterval(webhookInterval);
-  }, [publicKey, loadMyCampaigns, fetchIndexedTransactions, fetchHeliusStatus, fetchWebhookStats, fetchBalances, loadPoolData]);
+  }, [publicKey, loadMyCampaigns, fetchIndexedTransactions, fetchHeliusStatus, fetchWebhookStats]);
 
   const handleCopy = async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -539,8 +436,6 @@ export default function DashboardPage() {
       scanForPayments(),
       fetchHeliusStatus(),
       fetchWebhookStats(),
-      fetchBalances(),
-      loadPoolData(),
     ]);
   };
 
@@ -720,8 +615,7 @@ export default function DashboardPage() {
             { id: 'campaigns' as TabType, label: 'My Campaigns' },
             { id: 'activity' as TabType, label: 'Activity' },
             { id: 'stealth' as TabType, label: 'Stealth Payments' },
-            { id: 'pool' as TabType, label: 'Privacy Pool', active: true },
-          ].map(({ id, label, active }) => (
+          ].map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
@@ -731,10 +625,7 @@ export default function DashboardPage() {
                   : 'text-white/35 hover:text-white/50'
               }`}
             >
-              <span className="flex items-center gap-2">
-                {active && <span className="w-1.5 h-1.5 bg-green-400 rounded-full" />}
-                {label}
-              </span>
+              {label}
               {activeTab === id && (
                 <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-white" />
               )}
@@ -1007,127 +898,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {activeTab === 'pool' && (
-          <div className="space-y-4">
-            {/* Main Panel */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Balances Panel */}
-              <div className="lg:col-span-2 p-6 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-                <div className="flex items-center gap-2 mb-6">
-                  <div className="w-2 h-2 rounded-full bg-green-400" />
-                  <p className="text-[10px] text-white/25 tracking-wide">PRIVACY POOL ACTIVE</p>
-                </div>
-                <div className="grid grid-cols-2 gap-8">
-                  <div>
-                    <p className="text-xs text-white/30 mb-1">Principal Wallet</p>
-                    <p className="text-2xl font-mono text-white mb-1">
-                      {mainWalletBalance.toFixed(4)} <span className="text-sm text-white/30">SOL</span>
-                    </p>
-                    <p className="text-xs text-white/20 font-mono">
-                      {publicKey?.toBase58().slice(0, 8)}...{publicKey?.toBase58().slice(-6)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-green-400/60 mb-1">Stealth Balance</p>
-                    <p className="text-2xl font-mono text-green-400 mb-1">
-                      {stealthBalance.toFixed(4)} <span className="text-sm text-green-400/50">SOL</span>
-                    </p>
-                    <p className="text-xs text-white/20 font-mono">
-                      {stealthKeypair?.publicKey.toBase58().slice(0, 8)}...{stealthKeypair?.publicKey.toBase58().slice(-6)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* ZK Mode Panel */}
-              <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-white/40" />
-                    <span className="text-xs font-medium text-white">ZK Privacy</span>
-                  </div>
-                  <button
-                    onClick={() => setZkMode(!zkMode)}
-                    className={`w-10 h-5 rounded-full transition-all relative ${zkMode ? 'bg-green-400' : 'bg-white/20'}`}
-                  >
-                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${zkMode ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                  </button>
-                </div>
-                <p className="text-[10px] text-white/25 mb-4">
-                  Standardized amounts break on-chain correlation.
-                </p>
-                <div className="space-y-2">
-                  {ALLOWED_WITHDRAW_AMOUNTS.map((amt) => (
-                    <button
-                      key={amt}
-                      onClick={() => handlePrivateDeposit(amt)}
-                      disabled={processing === 'deposit'}
-                      className="w-full py-2.5 bg-white/[0.03] hover:bg-white/[0.05] text-white text-xs font-medium rounded-xl transition-all active:scale-[0.98] border border-white/[0.05]"
-                    >
-                      {processing === 'deposit' ? (
-                        <Loader2 className="w-4 h-4 animate-spin mx-auto" />
-                      ) : (
-                        `Deposit ${amt} SOL`
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Stats Row */}
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { label: 'POOL BALANCE', value: poolStats?.currentBalance?.toFixed(2) || '0.00', unit: 'SOL' },
-                { label: 'TOTAL DEPOSITED', value: poolStats?.totalDeposited?.toFixed(2) || '0.00', unit: 'SOL', accent: true },
-                { label: 'WITHDRAWALS', value: poolStats?.withdrawCount || 0, unit: '' },
-              ].map(({ label, value, unit, accent }) => (
-                <div key={label} className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-                  <p className={`text-[10px] tracking-wide mb-1 ${accent ? 'text-green-400/60' : 'text-white/25'}`}>{label}</p>
-                  <p className="text-xl font-mono text-white">
-                    {value} {unit && <span className="text-sm text-white/30">{unit}</span>}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* Private Notes */}
-            {privateNotes.length > 0 && (
-              <div className="p-5 rounded-2xl bg-white/[0.02] border border-green-400/10">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-green-400/60" />
-                    <span className="text-xs font-medium text-green-400/80">
-                      Private Notes ({privateNotes.length})
-                    </span>
-                  </div>
-                  <span className="font-mono text-white">
-                    {(privateNotes.reduce((acc, n) => acc + n.amount, 0) / LAMPORTS_PER_SOL).toFixed(2)} <span className="text-xs text-white/30">SOL</span>
-                  </span>
-                </div>
-
-                <button
-                  onClick={handleQuickWithdrawAll}
-                  disabled={processing === 'quick-withdraw'}
-                  className="w-full py-3 bg-white text-black text-sm font-medium rounded-xl hover:bg-white/90 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-                >
-                  {processing === 'quick-withdraw' ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4" />
-                      Withdraw All to Stealth
-                    </>
-                  )}
-                </button>
-
-                <p className="text-[10px] text-green-400/40 text-center mt-3">
-                  Maximum privacy: funds go directly to stealth address
-                </p>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {showPaymentModal && (

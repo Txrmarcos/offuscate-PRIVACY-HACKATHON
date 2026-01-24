@@ -731,6 +731,52 @@ NEXT_PUBLIC_HELIUS_API_KEY=your_helius_api_key
 
 Get a free key at: https://dev.helius.xyz
 
+#### Privacy Feedback UI Components
+
+**1. PrivacyFeedback Component** (`/components/PrivacyFeedback.tsx`)
+
+Shows detailed privacy analysis after a transaction:
+- Animated privacy icon based on level (red for PUBLIC, green for SEMI, purple for ZK_COMPRESSED, cyan for PRIVATE)
+- Trackability meter (percentage visualization)
+- Visibility breakdown grid (what's hidden vs visible)
+- Detailed risks and protections lists
+
+```typescript
+import { PrivacyFeedback } from './PrivacyFeedback';
+
+<PrivacyFeedback
+  privacyLevel="ZK_COMPRESSED"
+  txSignature="5h2ehjCBt..."
+  amount={0.1}
+/>
+```
+
+**2. TraceSimulator Component** (`/components/TraceSimulator.tsx`)
+
+Interactive simulation showing if a transaction can be traced on blockchain explorer:
+- Fake explorer UI animation
+- Shows search for wallet address
+- Demonstrates connection (or lack thereof) between sender and recipient
+- Comparison mode to show PUBLIC vs protected side-by-side
+
+```typescript
+import { TraceSimulatorButton } from './TraceSimulator';
+
+<TraceSimulatorButton
+  privacyLevel={selectedPrivacy}
+  senderAddress={publicKey.toBase58()}
+/>
+```
+
+**3. Trackability Percentages**
+
+| Privacy Level | Trackability | Description |
+|---------------|--------------|-------------|
+| PUBLIC | 100% | Fully visible on explorer |
+| SEMI | 30% | Pool mixed, timing analysis possible |
+| ZK_COMPRESSED | 15% | Only compression/decompression visible |
+| PRIVATE | 5% | Maximum privacy, only network metadata |
+
 ---
 
 ## Complete User Flows
