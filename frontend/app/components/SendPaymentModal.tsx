@@ -12,7 +12,6 @@ import {
   Connection,
 } from '@solana/web3.js';
 
-// Devnet RPC (uses Helius if configured)
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 const devnetConnection = new Connection(RPC_URL, 'confirmed');
 import { PrivacyLevel } from '../lib/types';
@@ -56,7 +55,6 @@ const PRIVACY_LABELS: Record<PrivacyLevel, string> = {
   PRIVATE: 'Full Privacy',
 };
 
-// Memo program ID for storing ephemeral key
 const MEMO_PROGRAM_ID = new SolanaPublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 
 export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
@@ -65,7 +63,7 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
   const [step, setStep] = useState<ModalStep>('form');
   const [selectedPrivacy, setSelectedPrivacy] = useState<PrivacyLevel>('SEMI');
   const [recipientMetaAddress, setRecipientMetaAddress] = useState('');
-  const [recipientPublicAddress, setRecipientPublicAddress] = useState(''); // For public transfers
+  const [recipientPublicAddress, setRecipientPublicAddress] = useState('');
   const [amount, setAmount] = useState('0.01');
   const [stealthResult, setStealthResult] = useState<StealthAddressResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +71,6 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
   const [copied, setCopied] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
-  // Generate stealth address when meta address changes
   const generateNewStealthAddress = useCallback(() => {
     const trimmed = recipientMetaAddress.trim();
 
@@ -99,7 +96,6 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
     }
   }, [recipientMetaAddress, selectedPrivacy]);
 
-  // Regenerate when meta address changes
   useEffect(() => {
     if (selectedPrivacy !== 'PUBLIC') {
       generateNewStealthAddress();
@@ -116,7 +112,6 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
 
   const shortAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-6)}`;
 
-  // Execute the real transaction
   const executeTransaction = async () => {
     if (!publicKey || !signTransaction) {
       setError('Wallet not connected or does not support signing');
@@ -137,19 +132,16 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
       let memoInstruction: TransactionInstruction | null = null;
 
       if (selectedPrivacy === 'PUBLIC') {
-        // Public transfer - direct to recipient
         if (!recipientPublicAddress) {
           throw new Error('Recipient address required');
         }
         destinationPubkey = new SolanaPublicKey(recipientPublicAddress);
       } else {
-        // Stealth transfer - to one-time stealth address
         if (!stealthResult) {
           throw new Error('Stealth address not generated');
         }
         destinationPubkey = stealthResult.stealthAddress;
 
-        // Add memo with ephemeral public key so receiver can find the payment
         const memoData = JSON.stringify({
           type: 'stealth',
           ephemeralPubKey: stealthResult.ephemeralPubKey,
@@ -164,10 +156,8 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
 
       setStatusMessage('Creating transaction...');
 
-      // Create the transaction
       const transaction = new Transaction();
 
-      // Add transfer instruction
       transaction.add(
         SystemProgram.transfer({
           fromPubkey: publicKey,
@@ -176,12 +166,10 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
         })
       );
 
-      // Add memo if stealth transfer
       if (memoInstruction) {
         transaction.add(memoInstruction);
       }
 
-      // Get recent blockhash from devnet (using explicit devnet connection)
       setStatusMessage('Getting blockhash from devnet...');
       const { blockhash, lastValidBlockHeight } = await devnetConnection.getLatestBlockhash('confirmed');
       transaction.recentBlockhash = blockhash;
@@ -189,13 +177,10 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
 
       setStatusMessage('Waiting for wallet signature...');
 
-      // Sign transaction with wallet
       const signedTransaction = await signTransaction(transaction);
 
       setStatusMessage('Sending to devnet...');
 
-      // Send signed transaction directly to devnet
-      // skipPreflight: true to avoid simulation issues
       const signature = await devnetConnection.sendRawTransaction(signedTransaction.serialize(), {
         skipPreflight: true,
         maxRetries: 3,
@@ -203,7 +188,6 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
 
       setStatusMessage('Confirming on devnet...');
 
-      // Wait for confirmation on devnet
       await devnetConnection.confirmTransaction({
         signature,
         blockhash,
@@ -242,13 +226,13 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-lg bg-[#141414] border border-[#262626] rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-lg bg-[#0a0a0a] border border-white/[0.06] rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-[#737373] hover:text-white transition-colors"
+          className="absolute top-4 right-4 text-white/30 hover:text-white transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -262,7 +246,7 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
 
             {/* Privacy Level */}
             <div className="mb-6">
-              <label className="text-sm text-gray-400 mb-3 block">Privacy Level</label>
+              <label className="text-[10px] text-white/25 uppercase tracking-wide mb-3 block">Privacy Level</label>
               <div className="grid grid-cols-3 gap-2">
                 {privacyOptions.map((option) => (
                   <button
@@ -271,33 +255,33 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
                     disabled={option.level === 'PRIVATE'}
                     className={`relative p-3 rounded-xl border text-left transition-all ${
                       option.level === 'PRIVATE'
-                        ? 'border-[#262626] opacity-50 cursor-not-allowed'
+                        ? 'border-white/[0.04] opacity-50 cursor-not-allowed'
                         : selectedPrivacy === option.level
-                          ? 'border-purple-500 bg-purple-500/10'
-                          : 'border-[#262626] hover:border-[#404040]'
+                          ? 'border-white bg-white/[0.05]'
+                          : 'border-white/[0.06] hover:border-white/[0.1]'
                     }`}
                   >
                     {selectedPrivacy === option.level && (
-                      <span className="absolute top-2 right-2 w-2 h-2 bg-purple-500 rounded-full" />
+                      <span className="absolute top-2 right-2 w-2 h-2 bg-green-400 rounded-full" />
                     )}
                     <option.icon
                       className={`w-4 h-4 mb-2 ${
                         selectedPrivacy === option.level
-                          ? 'text-purple-400'
-                          : 'text-[#737373]'
+                          ? 'text-white'
+                          : 'text-white/30'
                       }`}
                     />
                     <div className="text-white font-medium text-xs mb-1">{option.title}</div>
-                    <p className="text-[#737373] text-xs leading-tight">{option.description}</p>
+                    <p className="text-white/40 text-xs leading-tight">{option.description}</p>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Recipient - changes based on privacy level */}
+            {/* Recipient */}
             {selectedPrivacy === 'PUBLIC' ? (
               <div className="mb-4">
-                <label className="text-sm text-gray-400 mb-2 block">
+                <label className="text-[10px] text-white/25 uppercase tracking-wide mb-2 block">
                   Recipient Wallet Address
                 </label>
                 <input
@@ -305,12 +289,12 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
                   value={recipientPublicAddress}
                   onChange={(e) => setRecipientPublicAddress(e.target.value)}
                   placeholder="Enter Solana address..."
-                  className="w-full bg-[#0a0a0a] border border-[#262626] rounded-lg p-3 text-sm font-mono text-white placeholder-gray-600 focus:outline-none focus:border-purple-500"
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 text-sm font-mono text-white placeholder-white/20 focus:outline-none focus:border-white/[0.1]"
                 />
               </div>
             ) : (
               <div className="mb-4">
-                <label className="text-sm text-gray-400 mb-2 block">
+                <label className="text-[10px] text-white/25 uppercase tracking-wide mb-2 block">
                   Recipient Stealth Meta Address
                 </label>
                 <input
@@ -318,7 +302,7 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
                   value={recipientMetaAddress}
                   onChange={(e) => setRecipientMetaAddress(e.target.value)}
                   placeholder="st:ABC123...XYZ:DEF456...UVW"
-                  className="w-full bg-[#0a0a0a] border border-[#262626] rounded-lg p-3 text-sm font-mono text-white placeholder-gray-600 focus:outline-none focus:border-purple-500"
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 text-sm font-mono text-white placeholder-white/20 focus:outline-none focus:border-white/[0.1]"
                 />
               </div>
             )}
@@ -327,64 +311,64 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
 
             {/* Amount */}
             <div className="mb-4">
-              <label className="text-sm text-gray-400 mb-2 block">Amount (SOL)</label>
+              <label className="text-[10px] text-white/25 uppercase tracking-wide mb-2 block">Amount (SOL)</label>
               <input
                 type="number"
                 step="0.001"
                 min="0.001"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-lg p-3 text-sm text-white focus:outline-none focus:border-purple-500"
+                className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-white/[0.1]"
               />
             </div>
 
             {/* Generated Stealth Address */}
             {selectedPrivacy !== 'PUBLIC' && stealthResult && (
-              <div className="mb-6 p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl">
+              <div className="mb-6 p-4 bg-green-400/5 border border-green-400/10 rounded-xl">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-purple-400">
+                  <span className="text-sm font-medium text-green-400">
                     One-Time Stealth Address
                   </span>
                   <button
                     onClick={generateNewStealthAddress}
-                    className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                    className="text-xs text-green-400 hover:text-green-300 flex items-center gap-1"
                   >
                     <RefreshCw className="w-3 h-3" />
                     New
                   </button>
                 </div>
 
-                <div className="bg-[#0a0a0a] rounded-lg p-3 mb-3">
+                <div className="bg-white/[0.02] rounded-xl p-3 mb-3">
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-xs text-white break-all">
                       {stealthResult.stealthAddress.toBase58()}
                     </span>
                     <button
                       onClick={() => handleCopy(stealthResult.stealthAddress.toBase58())}
-                      className="ml-2 text-gray-400 hover:text-white flex-shrink-0"
+                      className="ml-2 text-white/30 hover:text-white flex-shrink-0"
                     >
                       {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
 
-                <p className="text-xs text-gray-500">
-                  Funds go here. <span className="text-purple-400">Unique to this payment</span> - unlinkable to recipient.
+                <p className="text-xs text-white/30">
+                  Funds go here. <span className="text-green-400">Unique to this payment</span> - unlinkable to recipient.
                 </p>
               </div>
             )}
 
             {/* Transaction Summary */}
-            <div className="mb-6 p-3 bg-[#0a0a0a] rounded-lg border border-[#262626]">
+            <div className="mb-6 p-3 bg-white/[0.02] rounded-xl border border-white/[0.06]">
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-500">From</span>
+                <span className="text-white/30">From</span>
                 <span className="text-white font-mono">
                   {publicKey ? shortAddress(publicKey.toBase58()) : 'Not connected'}
                 </span>
               </div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-500">To</span>
-                <span className="text-purple-400 font-mono">
+                <span className="text-white/30">To</span>
+                <span className="text-green-400 font-mono">
                   {selectedPrivacy === 'PUBLIC'
                     ? (recipientPublicAddress ? shortAddress(recipientPublicAddress) : '...')
                     : (stealthResult ? shortAddress(stealthResult.stealthAddress.toBase58()) : '...')
@@ -392,13 +376,13 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Amount</span>
-                <span className="text-white">{amount} SOL</span>
+                <span className="text-white/30">Amount</span>
+                <span className="text-white font-mono">{amount} SOL</span>
               </div>
             </div>
 
             {/* Devnet reminder */}
-            <div className="mb-4 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+            <div className="mb-4 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
               <p className="text-xs text-yellow-400 text-center">
                 Using <span className="font-semibold">Devnet</span> - Get free SOL at{' '}
                 <a
@@ -415,7 +399,7 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
             <button
               onClick={handleContinue}
               disabled={!publicKey || (selectedPrivacy !== 'PUBLIC' && !stealthResult)}
-              className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-full transition-colors flex items-center justify-center gap-2"
+              className="w-full py-4 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98]"
             >
               {!publicKey ? 'Connect Wallet First' : 'Send Payment'}
               <ArrowRight className="w-4 h-4" />
@@ -427,24 +411,24 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
         {step === 'processing' && (
           <div className="py-8 text-center">
             <div className="w-24 h-24 mx-auto mb-6 relative">
-              <div className="absolute inset-0 border-2 border-[#262626] rounded-full" />
-              <div className="absolute inset-0 border-2 border-purple-500 rounded-full border-t-transparent animate-spin" />
+              <div className="absolute inset-0 border-2 border-white/[0.06] rounded-full" />
+              <div className="absolute inset-0 border-2 border-white rounded-full border-t-transparent animate-spin" />
               <div className="absolute inset-0 flex items-center justify-center">
-                <Shield className="w-8 h-8 text-purple-400" />
+                <Shield className="w-8 h-8 text-white/60" />
               </div>
             </div>
 
             <h2 className="text-xl font-semibold text-white mb-2">
               Processing
             </h2>
-            <p className="text-[#737373] text-sm mb-6">
+            <p className="text-white/40 text-sm mb-6">
               {statusMessage}
             </p>
 
             {stealthResult && (
-              <div className="bg-[#0a0a0a] border border-[#262626] rounded-lg p-4">
-                <div className="text-xs text-gray-500 mb-1">Sending to Stealth Address</div>
-                <div className="font-mono text-sm text-purple-400">
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+                <div className="text-[10px] text-white/25 uppercase tracking-wide mb-1">Sending to Stealth Address</div>
+                <div className="font-mono text-sm text-green-400">
                   {shortAddress(stealthResult.stealthAddress.toBase58())}
                 </div>
               </div>
@@ -455,44 +439,44 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
         {/* Step 3: Success */}
         {step === 'success' && (
           <div className="py-8 text-center">
-            <div className="w-24 h-24 mx-auto mb-6 bg-green-500/20 rounded-full flex items-center justify-center border-2 border-green-500/30">
+            <div className="w-24 h-24 mx-auto mb-6 bg-green-400/10 rounded-full flex items-center justify-center border border-green-400/20">
               <Check className="w-10 h-10 text-green-400" />
             </div>
 
             <h2 className="text-xl font-semibold text-white mb-2">
               Payment Sent!
             </h2>
-            <p className="text-[#737373] text-sm mb-6">
+            <p className="text-white/40 text-sm mb-6">
               Transaction confirmed on Solana.
             </p>
 
-            <div className="bg-[#0a0a0a] border border-[#262626] rounded-lg p-4 mb-6 text-left">
-              <div className="flex items-center justify-between py-2 border-b border-[#262626]">
-                <span className="text-[#737373] text-sm">Privacy</span>
-                <div className="flex items-center gap-2 text-purple-400 text-sm">
-                  {selectedPrivacy === 'PUBLIC' ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 mb-6 text-left">
+              <div className="flex items-center justify-between py-2 border-b border-white/[0.06]">
+                <span className="text-white/30 text-sm">Privacy</span>
+                <div className="flex items-center gap-2 text-white text-sm">
+                  {selectedPrivacy === 'PUBLIC' ? <Eye className="w-4 h-4 text-white/40" /> : <EyeOff className="w-4 h-4 text-white/40" />}
                   {PRIVACY_LABELS[selectedPrivacy]}
                 </div>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-[#262626]">
-                <span className="text-[#737373] text-sm">Amount</span>
-                <span className="text-white text-sm">{amount} SOL</span>
+              <div className="flex items-center justify-between py-2 border-b border-white/[0.06]">
+                <span className="text-white/30 text-sm">Amount</span>
+                <span className="text-white text-sm font-mono">{amount} SOL</span>
               </div>
               {stealthResult && (
-                <div className="flex items-center justify-between py-2 border-b border-[#262626]">
-                  <span className="text-[#737373] text-sm">Stealth Address</span>
-                  <span className="text-purple-400 text-sm font-mono">
+                <div className="flex items-center justify-between py-2 border-b border-white/[0.06]">
+                  <span className="text-white/30 text-sm">Stealth Address</span>
+                  <span className="text-green-400 text-sm font-mono">
                     {shortAddress(stealthResult.stealthAddress.toBase58())}
                   </span>
                 </div>
               )}
               <div className="flex items-center justify-between py-2">
-                <span className="text-[#737373] text-sm">Transaction</span>
+                <span className="text-white/30 text-sm">Transaction</span>
                 <a
                   href={`https://explorer.solana.com/tx/${txHash}?cluster=devnet`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-purple-400 text-sm font-mono flex items-center gap-1 hover:text-purple-300"
+                  className="text-white/40 hover:text-white text-sm font-mono flex items-center gap-1"
                 >
                   {shortAddress(txHash)}
                   <ExternalLink className="w-3 h-3" />
@@ -502,7 +486,7 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
 
             <button
               onClick={onClose}
-              className="w-full py-4 bg-white text-black font-medium rounded-full hover:bg-gray-100 transition-colors"
+              className="w-full py-4 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all active:scale-[0.98]"
             >
               Done
             </button>
@@ -512,7 +496,7 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
         {/* Step 4: Error */}
         {step === 'error' && (
           <div className="py-8 text-center">
-            <div className="w-24 h-24 mx-auto mb-6 bg-red-500/20 rounded-full flex items-center justify-center border-2 border-red-500/30">
+            <div className="w-24 h-24 mx-auto mb-6 bg-red-500/10 rounded-full flex items-center justify-center border border-red-500/20">
               <X className="w-10 h-10 text-red-400" />
             </div>
 
@@ -526,13 +510,13 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
             <div className="flex gap-3">
               <button
                 onClick={onClose}
-                className="flex-1 py-3 border border-[#262626] text-white font-medium rounded-full hover:bg-[#1a1a1a] transition-colors"
+                className="flex-1 py-3 border border-white/[0.06] text-white font-medium rounded-xl hover:bg-white/[0.03] transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={handleRetry}
-                className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-full transition-colors"
+                className="flex-1 py-3 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all"
               >
                 Try Again
               </button>

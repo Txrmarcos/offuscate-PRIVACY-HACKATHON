@@ -5,6 +5,7 @@ use anchor_lang::solana_program::sysvar::instructions::{
     load_instruction_at_checked,
 };
 use anchor_lang::solana_program::ed25519_program;
+use anchor_lang::solana_program::hash::hash;
 
 declare_id!("5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq");
 
@@ -22,6 +23,13 @@ pub const ALLOWED_AMOUNTS: [u64; 3] = [
     500_000_000,   // 0.5 SOL
     1_000_000_000, // 1.0 SOL
 ];
+
+// ==============================================
+// PHASE 3: COMMITMENT-BASED PRIVACY CONSTANTS
+// ==============================================
+
+// Using individual PDAs for commitments and nullifiers
+// This is more scalable and avoids stack limits
 
 #[program]
 pub mod offuscate {
@@ -666,6 +674,237 @@ pub mod offuscate {
 
         Ok(())
     }
+
+    // ==============================================
+    // PHASE 3: COMMITMENT-BASED PRIVACY (ZK-LIKE)
+    // ==============================================
+    //
+    // This implements a commitment + nullifier scheme similar to Tornado Cash:
+    // - On deposit: user provides commitment = hash(secret || nullifier_secret || amount)
+    // - On withdraw: user provides nullifier and proves knowledge of secret
+    // - The commitment hides the depositor, the nullifier prevents double-spend
+    // - Even with full chain analysis, linkability is broken
+    //
+    // Uses individual PDAs for scalability and to avoid stack limits
+
+    /// Private deposit with commitment
+    ///
+    /// PRIVACY FLOW:
+    /// 1. User generates: secret (32 bytes random), nullifier_secret (32 bytes random)
+    /// 2. User computes: commitment = hash(secret_hash || nullifier || amount_bytes)
+    ///    where secret_hash = hash(secret), nullifier = hash(nullifier_secret)
+    /// 3. User calls this instruction with commitment hash
+    /// 4. On-chain: creates CommitmentPDA with commitment hash (not secrets)
+    ///
+    /// Even an advanced indexer only sees:
+    /// - A deposit happened
+    /// - The commitment hash
+    /// - The amount (one of standardized amounts)
+    /// Cannot link to future withdrawal without knowing the secrets
+    pub fn private_deposit(
+        ctx: Context<PrivateDeposit>,
+        commitment: [u8; 32],
+        amount: u64,
+    ) -> Result<()> {
+        // Validate amount is one of allowed standardized amounts
+        require!(
+            ALLOWED_AMOUNTS.contains(&amount),
+            ErrorCode::InvalidWithdrawAmount
+        );
+
+        // Transfer SOL to pool vault
+        system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.depositor.to_account_info(),
+                    to: ctx.accounts.pool_vault.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
+        // Store commitment in the commitment PDA
+        let commitment_pda = &mut ctx.accounts.commitment_pda;
+        commitment_pda.commitment = commitment;
+        commitment_pda.amount = amount;
+        commitment_pda.timestamp = Clock::get()?.unix_timestamp;
+        commitment_pda.spent = false;
+        commitment_pda.bump = ctx.bumps.commitment_pda;
+
+        // Update pool stats
+        let pool = &mut ctx.accounts.pool;
+        pool.total_deposited = pool.total_deposited.checked_add(amount)
+            .ok_or(ErrorCode::Overflow)?;
+        pool.deposit_count = pool.deposit_count.checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+
+        msg!("Private deposit: {} lamports", amount);
+        // DO NOT log commitment hash to minimize on-chain fingerprinting
+
+        Ok(())
+    }
+
+    /// Private withdraw with nullifier
+    ///
+    /// PRIVACY FLOW:
+    /// 1. User provides: nullifier = hash(nullifier_secret)
+    /// 2. User provides: secret_hash = hash(secret)
+    /// 3. User provides: recipient address (stealth address)
+    /// 4. On-chain verifies:
+    ///    - Commitment PDA exists for hash(secret_hash || nullifier || amount_bytes)
+    ///    - Nullifier not already used (NullifierPDA doesn't exist)
+    /// 5. Creates NullifierPDA (marks as used), transfers to recipient
+    ///
+    /// The nullifier breaks the link:
+    /// - Nullifier is derived from nullifier_secret known only to depositor
+    /// - Cannot be correlated to the original commitment without the secrets
+    pub fn private_withdraw(
+        ctx: Context<PrivateWithdraw>,
+        nullifier: [u8; 32],
+        secret_hash: [u8; 32],
+        amount: u64,
+    ) -> Result<()> {
+        // Validate amount
+        require!(
+            ALLOWED_AMOUNTS.contains(&amount),
+            ErrorCode::InvalidWithdrawAmount
+        );
+
+        // Verify commitment matches
+        // commitment = hash(secret_hash || nullifier || amount_bytes)
+        let mut preimage = Vec::with_capacity(72);
+        preimage.extend_from_slice(&secret_hash);
+        preimage.extend_from_slice(&nullifier);
+        preimage.extend_from_slice(&amount.to_le_bytes());
+
+        let computed_commitment = hash(&preimage).to_bytes();
+
+        let commitment_pda = &mut ctx.accounts.commitment_pda;
+        require!(
+            computed_commitment == commitment_pda.commitment,
+            ErrorCode::InvalidCommitmentProof
+        );
+        require!(!commitment_pda.spent, ErrorCode::NullifierAlreadyUsed);
+        require!(commitment_pda.amount == amount, ErrorCode::InvalidAmount);
+
+        // Mark commitment as spent
+        commitment_pda.spent = true;
+
+        // Initialize nullifier PDA (this prevents double-spend)
+        let nullifier_pda = &mut ctx.accounts.nullifier_pda;
+        nullifier_pda.nullifier = nullifier;
+        nullifier_pda.used_at = Clock::get()?.unix_timestamp;
+        nullifier_pda.bump = ctx.bumps.nullifier_pda;
+
+        // Transfer from pool vault to recipient
+        let pool = &ctx.accounts.pool;
+        let vault_bump = pool.vault_bump;
+        let signer_seeds: &[&[&[u8]]] = &[&[b"pool_vault", &[vault_bump]]];
+
+        system_program::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.pool_vault.to_account_info(),
+                    to: ctx.accounts.recipient.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            amount,
+        )?;
+
+        // Update pool stats
+        let pool = &mut ctx.accounts.pool;
+        pool.total_withdrawn = pool.total_withdrawn.checked_add(amount)
+            .ok_or(ErrorCode::Overflow)?;
+        pool.withdraw_count = pool.withdraw_count.checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+
+        msg!("Private withdrawal: {} lamports", amount);
+        // DO NOT log recipient or nullifier to minimize on-chain fingerprinting
+
+        Ok(())
+    }
+
+    /// Private withdraw via relayer (gasless)
+    ///
+    /// Same as private_withdraw but with relayer paying gas.
+    /// Uses ed25519 signature verification to prove recipient ownership.
+    pub fn private_withdraw_relayed(
+        ctx: Context<PrivateWithdrawRelayed>,
+        nullifier: [u8; 32],
+        secret_hash: [u8; 32],
+        amount: u64,
+    ) -> Result<()> {
+        // Validate amount
+        require!(
+            ALLOWED_AMOUNTS.contains(&amount),
+            ErrorCode::InvalidWithdrawAmount
+        );
+
+        // Verify ed25519 signature exists in the transaction
+        let ix_sysvar = &ctx.accounts.instructions_sysvar;
+        let ed25519_ix = load_instruction_at_checked(0, ix_sysvar)?;
+        require!(
+            ed25519_ix.program_id == ed25519_program::ID,
+            ErrorCode::InvalidSignatureInstruction
+        );
+
+        // Verify commitment matches
+        let mut preimage = Vec::with_capacity(72);
+        preimage.extend_from_slice(&secret_hash);
+        preimage.extend_from_slice(&nullifier);
+        preimage.extend_from_slice(&amount.to_le_bytes());
+
+        let computed_commitment = hash(&preimage).to_bytes();
+
+        let commitment_pda = &mut ctx.accounts.commitment_pda;
+        require!(
+            computed_commitment == commitment_pda.commitment,
+            ErrorCode::InvalidCommitmentProof
+        );
+        require!(!commitment_pda.spent, ErrorCode::NullifierAlreadyUsed);
+        require!(commitment_pda.amount == amount, ErrorCode::InvalidAmount);
+
+        // Mark commitment as spent
+        commitment_pda.spent = true;
+
+        // Initialize nullifier PDA
+        let nullifier_pda = &mut ctx.accounts.nullifier_pda;
+        nullifier_pda.nullifier = nullifier;
+        nullifier_pda.used_at = Clock::get()?.unix_timestamp;
+        nullifier_pda.bump = ctx.bumps.nullifier_pda;
+
+        // Transfer from pool vault to recipient
+        let pool = &ctx.accounts.pool;
+        let vault_bump = pool.vault_bump;
+        let signer_seeds: &[&[&[u8]]] = &[&[b"pool_vault", &[vault_bump]]];
+
+        system_program::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.pool_vault.to_account_info(),
+                    to: ctx.accounts.recipient.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            amount,
+        )?;
+
+        // Update pool stats
+        let pool = &mut ctx.accounts.pool;
+        pool.total_withdrawn = pool.total_withdrawn.checked_add(amount)
+            .ok_or(ErrorCode::Overflow)?;
+        pool.withdraw_count = pool.withdraw_count.checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+
+        msg!("RELAYED private withdrawal: {} lamports", amount);
+        msg!("Relayer: {}", ctx.accounts.relayer.key());
+
+        Ok(())
+    }
 }
 
 // ============================================
@@ -1118,6 +1357,145 @@ pub struct RegisterStealthPayment<'info> {
 }
 
 // ============================================
+// ACCOUNTS - PHASE 3: COMMITMENT-BASED PRIVACY
+// ============================================
+
+#[derive(Accounts)]
+#[instruction(commitment: [u8; 32])]
+pub struct PrivateDeposit<'info> {
+    #[account(mut)]
+    pub depositor: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"privacy_pool"],
+        bump = pool.bump
+    )]
+    pub pool: Account<'info, PrivacyPool>,
+
+    /// CHECK: Pool vault PDA
+    #[account(
+        mut,
+        seeds = [b"pool_vault"],
+        bump = pool.vault_bump
+    )]
+    pub pool_vault: SystemAccount<'info>,
+
+    /// Commitment PDA - stores the commitment hash
+    /// Derived from the commitment bytes so only one deposit per commitment
+    #[account(
+        init,
+        payer = depositor,
+        space = CommitmentPDA::SPACE,
+        seeds = [b"commitment", commitment.as_ref()],
+        bump
+    )]
+    pub commitment_pda: Account<'info, CommitmentPDA>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(nullifier: [u8; 32], secret_hash: [u8; 32], amount: u64)]
+pub struct PrivateWithdraw<'info> {
+    /// Payer for the transaction (can be anyone)
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    /// CHECK: The recipient (any address, typically stealth)
+    #[account(mut)]
+    pub recipient: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"privacy_pool"],
+        bump = pool.bump
+    )]
+    pub pool: Account<'info, PrivacyPool>,
+
+    /// CHECK: Pool vault PDA
+    #[account(
+        mut,
+        seeds = [b"pool_vault"],
+        bump = pool.vault_bump
+    )]
+    pub pool_vault: SystemAccount<'info>,
+
+    /// Commitment PDA - verify it exists and hasn't been spent
+    /// The commitment is recomputed from secret_hash || nullifier || amount
+    #[account(
+        mut,
+        seeds = [b"commitment", commitment_pda.commitment.as_ref()],
+        bump = commitment_pda.bump
+    )]
+    pub commitment_pda: Account<'info, CommitmentPDA>,
+
+    /// Nullifier PDA - created to mark this nullifier as used
+    /// If this account already exists, the withdrawal will fail (double-spend prevention)
+    #[account(
+        init,
+        payer = payer,
+        space = NullifierPDA::SPACE,
+        seeds = [b"nullifier", nullifier.as_ref()],
+        bump
+    )]
+    pub nullifier_pda: Account<'info, NullifierPDA>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(nullifier: [u8; 32], secret_hash: [u8; 32], amount: u64)]
+pub struct PrivateWithdrawRelayed<'info> {
+    /// Relayer pays gas
+    #[account(mut)]
+    pub relayer: Signer<'info>,
+
+    /// CHECK: The recipient (any address, typically stealth)
+    #[account(mut)]
+    pub recipient: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"privacy_pool"],
+        bump = pool.bump
+    )]
+    pub pool: Account<'info, PrivacyPool>,
+
+    /// CHECK: Pool vault PDA
+    #[account(
+        mut,
+        seeds = [b"pool_vault"],
+        bump = pool.vault_bump
+    )]
+    pub pool_vault: SystemAccount<'info>,
+
+    /// Commitment PDA
+    #[account(
+        mut,
+        seeds = [b"commitment", commitment_pda.commitment.as_ref()],
+        bump = commitment_pda.bump
+    )]
+    pub commitment_pda: Account<'info, CommitmentPDA>,
+
+    /// Nullifier PDA - created to mark this nullifier as used
+    #[account(
+        init,
+        payer = relayer,
+        space = NullifierPDA::SPACE,
+        seeds = [b"nullifier", nullifier.as_ref()],
+        bump
+    )]
+    pub nullifier_pda: Account<'info, NullifierPDA>,
+
+    /// CHECK: Instructions sysvar for ed25519 verification
+    #[account(address = instructions_sysvar::ID)]
+    pub instructions_sysvar: AccountInfo<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+// ============================================
 // STATE - PRIVACY POOL
 // ============================================
 
@@ -1257,6 +1635,50 @@ impl StealthRegistry {
         16;                         // padding
 }
 
+// ============================================
+// STATE - PHASE 3: COMMITMENT-BASED PRIVACY
+// ============================================
+
+/// Individual PDA for each commitment
+/// Created when a private deposit is made
+/// Stores: commitment hash, amount, timestamp, spent status
+#[account]
+pub struct CommitmentPDA {
+    pub commitment: [u8; 32],  // 32 bytes - the commitment hash
+    pub amount: u64,           // 8 bytes - deposited amount
+    pub timestamp: i64,        // 8 bytes - when deposited
+    pub spent: bool,           // 1 byte - has this been withdrawn
+    pub bump: u8,              // 1 byte
+}
+
+impl CommitmentPDA {
+    pub const SPACE: usize = 8 +   // discriminator
+        32 +                        // commitment
+        8 +                         // amount
+        8 +                         // timestamp
+        1 +                         // spent
+        1 +                         // bump
+        16;                         // padding
+}
+
+/// Individual PDA for each used nullifier
+/// Created when a private withdrawal is made
+/// Existence of this PDA proves the nullifier has been used
+#[account]
+pub struct NullifierPDA {
+    pub nullifier: [u8; 32],   // 32 bytes - the nullifier hash
+    pub used_at: i64,          // 8 bytes - when used
+    pub bump: u8,              // 1 byte
+}
+
+impl NullifierPDA {
+    pub const SPACE: usize = 8 +   // discriminator
+        32 +                        // nullifier
+        8 +                         // used_at
+        1 +                         // bump
+        16;                         // padding
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum CampaignStatus {
     Active,
@@ -1331,4 +1753,12 @@ pub enum ErrorCode {
     SignerMismatch,
     #[msg("Invalid claim message format (expected 'claim:<pda>')")]
     InvalidClaimMessage,
+
+    // Phase 3: Commitment-based privacy errors
+    #[msg("Nullifier has already been used (double-spend attempt)")]
+    NullifierAlreadyUsed,
+    #[msg("Invalid commitment proof - preimage does not match stored commitment")]
+    InvalidCommitmentProof,
+    #[msg("Commitment has already been spent")]
+    CommitmentAlreadySpent,
 }

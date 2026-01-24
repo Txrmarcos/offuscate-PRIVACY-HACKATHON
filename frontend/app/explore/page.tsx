@@ -8,7 +8,6 @@ import { Campaign } from '../lib/types';
 import { useProgram, CampaignData } from '../lib/program';
 import { PublicKey } from '@solana/web3.js';
 
-// Convert on-chain campaign to UI Campaign type
 function toUICampaign(
   pubkey: PublicKey,
   data: CampaignData,
@@ -25,7 +24,7 @@ function toUICampaign(
     raised: vaultBalance,
     supporters: data.donorCount,
     daysLeft,
-    privacy: 'SEMI', // Default to semi-private
+    privacy: 'SEMI',
     organizer: data.owner.toBase58().slice(0, 8) + '...',
   };
 }
@@ -38,7 +37,6 @@ export default function ExplorePage() {
 
   const { listCampaigns, fetchVaultBalance } = useProgram();
 
-  // Load on-chain campaigns
   const loadCampaigns = async () => {
     setIsLoading(true);
     try {
@@ -46,7 +44,6 @@ export default function ExplorePage() {
 
       const uiCampaigns: Campaign[] = [];
       for (const { pubkey, account } of onChainCampaigns) {
-        // Only show active campaigns
         if (account.status !== 'Active') continue;
 
         try {
@@ -76,14 +73,14 @@ export default function ExplorePage() {
   );
 
   return (
-    <div className="min-h-screen px-6 py-12">
+    <div className="min-h-screen px-6 py-20">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">
+            <h1 className="text-3xl font-semibold text-white mb-2">
               Explore Campaigns
             </h1>
-            <p className="text-[#737373]">
+            <p className="text-white/40">
               Support missions with complete on-chain privacy.
             </p>
           </div>
@@ -92,7 +89,7 @@ export default function ExplorePage() {
             <button
               onClick={loadCampaigns}
               disabled={isLoading}
-              className="p-2.5 bg-[#141414] border border-[#262626] rounded-lg text-[#737373] hover:text-white hover:border-[#404040] transition-colors disabled:opacity-50"
+              className="w-11 h-11 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-white/40 hover:text-white hover:bg-white/[0.05] transition-all active:scale-95 disabled:opacity-50"
               title="Refresh campaigns"
             >
               {isLoading ? (
@@ -103,13 +100,13 @@ export default function ExplorePage() {
             </button>
 
             <div className="relative w-full md:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#737373]" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
               <input
                 type="text"
                 placeholder="Search missions..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-[#141414] border border-[#262626] rounded-lg text-white placeholder-[#737373] focus:border-[#404040] transition-colors"
+                className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-2xl text-white placeholder-white/30 focus:border-white/[0.1] transition-colors text-sm"
               />
             </div>
           </div>
@@ -117,12 +114,12 @@ export default function ExplorePage() {
 
         {isLoading && campaigns.length === 0 ? (
           <div className="text-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-purple-500 mx-auto mb-4" />
-            <p className="text-[#737373]">Loading campaigns from Solana...</p>
+            <Loader2 className="w-8 h-8 animate-spin text-white/40 mx-auto mb-4" />
+            <p className="text-white/30">Loading campaigns from Solana...</p>
           </div>
         ) : (
           <>
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid md:grid-cols-2 gap-4">
               {filteredCampaigns.map((campaign, index) => (
                 <CampaignCard
                   key={`${campaign.id}-${index}`}
@@ -134,7 +131,7 @@ export default function ExplorePage() {
 
             {filteredCampaigns.length === 0 && (
               <div className="text-center py-20">
-                <p className="text-[#737373]">No campaigns found matching your search.</p>
+                <p className="text-white/30">No campaigns found matching your search.</p>
               </div>
             )}
           </>

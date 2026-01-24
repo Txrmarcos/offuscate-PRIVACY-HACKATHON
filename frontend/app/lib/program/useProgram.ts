@@ -655,6 +655,282 @@ export function useProgram() {
     }
   }, [program, connection]);
 
+  // ============================================
+  // PHASE 3: COMMITMENT-BASED PRIVATE OPERATIONS
+  // ============================================
+
+  /**
+   * Private deposit with commitment (ZK-like privacy)
+   *
+   * PRIVACY FLOW:
+   * 1. Generate random secret + nullifier_secret
+   * 2. Compute commitment = hash(secret_hash || nullifier || amount)
+   * 3. Deposit with just the commitment (secrets stay local)
+   * 4. Store secrets in localStorage for later withdrawal
+   *
+   * Result: Deposit cannot be linked to future withdrawal without secrets
+   *
+   * @param amountSol - Amount to deposit (must be 0.1, 0.5, or 1.0 SOL)
+   * @returns Transaction signature and the private note (save this!)
+   */
+  const privateDeposit = useCallback(async (
+    amountSol: number
+  ): Promise<{ signature: string; note: any }> => {
+    if (!wallet) throw new Error('Wallet not connected');
+    if (!ALLOWED_WITHDRAW_AMOUNTS.includes(amountSol)) {
+      throw new Error(`Invalid amount. Must be one of: ${ALLOWED_WITHDRAW_AMOUNTS.join(', ')} SOL`);
+    }
+
+    const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+    const { BN } = await import('@coral-xyz/anchor');
+    const { LAMPORTS_PER_SOL, SystemProgram, PublicKey } = await import('@solana/web3.js');
+    const { generatePrivateNote, saveNote, toArray32 } = await import('../privacy');
+
+    const amountLamports = amountSol * LAMPORTS_PER_SOL;
+    const note = generatePrivateNote(amountLamports);
+
+    // Get the commitment PDA
+    const [commitmentPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from('commitment'), Buffer.from(note.commitment)],
+      PROGRAM_ID
+    );
+
+    const commitmentArray = toArray32(note.commitment);
+
+    const signature = await program.methods
+      .privateDeposit(commitmentArray, new BN(amountLamports))
+      .accounts({
+        depositor: wallet.publicKey,
+        pool: poolPda,
+        poolVault: poolVaultPda,
+        commitmentPda: commitmentPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    // Save the note to localStorage for later withdrawal
+    saveNote(wallet.publicKey.toString(), note);
+
+    return { signature, note };
+  }, [program, wallet]);
+
+  /**
+   * Private withdraw with nullifier (ZK-like privacy)
+   *
+   * PRIVACY FLOW:
+   * 1. Load the private note (from localStorage)
+   * 2. Provide nullifier = hash(nullifier_secret)
+   * 3. Provide secret_hash = hash(secret)
+   * 4. Program verifies commitment matches and nullifier not used
+   * 5. Creates NullifierPDA (prevents double-spend)
+   * 6. Transfers to recipient (stealth address)
+   *
+   * Result: Withdrawal cannot be linked to deposit by chain analysis
+   *
+   * @param note - The private note from deposit
+   * @param recipient - The recipient public key (typically stealth address)
+   * @returns Transaction signature
+   */
+  const privateWithdraw = useCallback(async (
+    note: any,
+    recipient: PublicKey
+  ): Promise<string> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+    const { BN } = await import('@coral-xyz/anchor');
+    const { SystemProgram, PublicKey: PK } = await import('@solana/web3.js');
+    const { toArray32, markNoteSpent, toHex } = await import('../privacy');
+
+    // Get the commitment PDA
+    const [commitmentPda] = PK.findProgramAddressSync(
+      [Buffer.from('commitment'), Buffer.from(note.commitment)],
+      PROGRAM_ID
+    );
+
+    // Get the nullifier PDA
+    const [nullifierPda] = PK.findProgramAddressSync(
+      [Buffer.from('nullifier'), Buffer.from(note.nullifier)],
+      PROGRAM_ID
+    );
+
+    const nullifierArray = toArray32(note.nullifier);
+    const secretHashArray = toArray32(note.secretHash);
+
+    const signature = await program.methods
+      .privateWithdraw(nullifierArray, secretHashArray, new BN(note.amount))
+      .accounts({
+        payer: wallet.publicKey,
+        recipient: recipient,
+        pool: poolPda,
+        poolVault: poolVaultPda,
+        commitmentPda: commitmentPda,
+        nullifierPda: nullifierPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    // Mark note as spent in localStorage
+    markNoteSpent(wallet.publicKey.toString(), toHex(note.commitment));
+
+    return signature;
+  }, [program, wallet]);
+
+  /**
+   * Private withdraw via relayer (gasless + ZK-like privacy)
+   *
+   * Combines Phase 2 (gasless) with Phase 3 (commitment privacy)
+   * - Relayer pays gas fees
+   * - Recipient proves ownership via ed25519 signature
+   * - Nullifier prevents double-spend
+   *
+   * @param note - The private note from deposit
+   * @param recipientKeypair - The recipient keypair (for signing)
+   * @returns Transaction signature and relayer address
+   */
+  const privateWithdrawRelayed = useCallback(async (
+    note: any,
+    recipientKeypair: Keypair
+  ): Promise<{ signature: string; relayer: string }> => {
+    const { toArray32, markNoteSpent, toHex } = await import('../privacy');
+    const { sign } = await import('tweetnacl');
+    const bs58 = await import('bs58');
+
+    // Get the commitment PDA
+    const { PublicKey: PK } = await import('@solana/web3.js');
+    const [commitmentPda] = PK.findProgramAddressSync(
+      [Buffer.from('commitment'), Buffer.from(note.commitment)],
+      PROGRAM_ID
+    );
+
+    // Create message to sign
+    const message = Buffer.from(`private_withdraw:${toHex(note.commitment)}`);
+
+    // Sign with recipient keypair
+    const signature = sign.detached(message, recipientKeypair.secretKey);
+    const signatureBase58 = bs58.default.encode(signature);
+
+    // Call relayer API for private withdraw
+    const response = await fetch('/api/relayer/private-claim', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        commitment: toHex(note.commitment),
+        nullifier: toHex(note.nullifier),
+        secretHash: toHex(note.secretHash),
+        amount: note.amount,
+        recipient: recipientKeypair.publicKey.toString(),
+        signature: signatureBase58,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || result.details || 'Relayer private claim failed');
+    }
+
+    // Mark note as spent
+    if (typeof window !== 'undefined') {
+      markNoteSpent(recipientKeypair.publicKey.toString(), toHex(note.commitment));
+    }
+
+    return {
+      signature: result.signature,
+      relayer: result.relayer,
+    };
+  }, []);
+
+  /**
+   * Get stored private notes for the connected wallet
+   */
+  const getPrivateNotes = useCallback(async (): Promise<any[]> => {
+    if (!wallet) return [];
+
+    const { getStoredNotes } = await import('../privacy');
+    return getStoredNotes(wallet.publicKey.toString());
+  }, [wallet]);
+
+  /**
+   * Get unspent private notes for the connected wallet
+   */
+  const getUnspentPrivateNotes = useCallback(async (): Promise<any[]> => {
+    if (!wallet) return [];
+
+    const { getUnspentNotes } = await import('../privacy');
+    return getUnspentNotes(wallet.publicKey.toString());
+  }, [wallet]);
+
+  /**
+   * QUICK WITHDRAW TO STEALTH: Saca todas as private notes para o stealth address
+   *
+   * PRIVACIDADE MÁXIMA: Fundos ficam no stealth address para uso direto.
+   * NÃO transfere para carteira principal (isso quebraria a privacidade).
+   *
+   * @param stealthKeypair - Keypair do stealth address
+   * @returns Array of withdrawal signatures
+   */
+  const quickWithdrawAllToStealth = useCallback(async (
+    stealthKeypair: Keypair
+  ): Promise<{ note: any; signature: string }[]> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { getUnspentNotes, toArray32, markNoteSpent, toHex } = await import('../privacy');
+    const { BN } = await import('@coral-xyz/anchor');
+    const { SystemProgram, PublicKey: PK } = await import('@solana/web3.js');
+
+    const notes = await getUnspentNotes(wallet.publicKey.toString());
+
+    if (notes.length === 0) {
+      throw new Error('No unspent private notes found');
+    }
+
+    const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+    const results: { note: any; signature: string }[] = [];
+
+    for (const note of notes) {
+      try {
+        const [commitmentPda] = PK.findProgramAddressSync(
+          [Buffer.from('commitment'), Buffer.from(note.commitment)],
+          PROGRAM_ID
+        );
+
+        const [nullifierPda] = PK.findProgramAddressSync(
+          [Buffer.from('nullifier'), Buffer.from(note.nullifier)],
+          PROGRAM_ID
+        );
+
+        const nullifierArray = toArray32(note.nullifier);
+        const secretHashArray = toArray32(note.secretHash);
+
+        const signature = await program.methods
+          .privateWithdraw(nullifierArray, secretHashArray, new BN(note.amount))
+          .accounts({
+            payer: wallet.publicKey,
+            recipient: stealthKeypair.publicKey,
+            pool: poolPda,
+            poolVault: poolVaultPda,
+            commitmentPda: commitmentPda,
+            nullifierPda: nullifierPda,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc();
+
+        // Mark note as spent
+        markNoteSpent(wallet.publicKey.toString(), toHex(note.commitment));
+
+        results.push({ note, signature });
+      } catch (err) {
+        console.error('Failed to withdraw note:', err);
+        // Continue with next note
+      }
+    }
+
+    return results;
+  }, [program, wallet]);
+
   return {
     // Program instance (for advanced usage)
     program,
@@ -696,6 +972,16 @@ export function useProgram() {
     // Batch operations (breaks 1 withdraw = 1 tx pattern)
     batchClaimPoolWithdraw,
     fetchReadyWithdrawals,
+
+    // Phase 3: Commitment-based privacy (ZK-like)
+    privateDeposit,
+    privateWithdraw,
+    privateWithdrawRelayed,
+    getPrivateNotes,
+    getUnspentPrivateNotes,
+
+    // Quick Withdraw to Stealth (privacidade máxima - não transfere pra main)
+    quickWithdrawAllToStealth,
 
     // Constants
     ALLOWED_WITHDRAW_AMOUNTS,

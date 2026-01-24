@@ -1187,6 +1187,494 @@
       ]
     },
     {
+      "name": "private_deposit",
+      "docs": [
+        "Private deposit with commitment",
+        "",
+        "PRIVACY FLOW:",
+        "1. User generates: secret (32 bytes random), nullifier_secret (32 bytes random)",
+        "2. User computes: commitment = hash(secret_hash || nullifier || amount_bytes)",
+        "where secret_hash = hash(secret), nullifier = hash(nullifier_secret)",
+        "3. User calls this instruction with commitment hash",
+        "4. On-chain: creates CommitmentPDA with commitment hash (not secrets)",
+        "",
+        "Even an advanced indexer only sees:",
+        "- A deposit happened",
+        "- The commitment hash",
+        "- The amount (one of standardized amounts)",
+        "Cannot link to future withdrawal without knowing the secrets"
+      ],
+      "discriminator": [
+        77,
+        169,
+        194,
+        35,
+        212,
+        3,
+        79,
+        92
+      ],
+      "accounts": [
+        {
+          "name": "depositor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "commitment_pda",
+          "docs": [
+            "Commitment PDA - stores the commitment hash",
+            "Derived from the commitment bytes so only one deposit per commitment"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  109,
+                  105,
+                  116,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "commitment"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "commitment",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "private_withdraw",
+      "docs": [
+        "Private withdraw with nullifier",
+        "",
+        "PRIVACY FLOW:",
+        "1. User provides: nullifier = hash(nullifier_secret)",
+        "2. User provides: secret_hash = hash(secret)",
+        "3. User provides: recipient address (stealth address)",
+        "4. On-chain verifies:",
+        "- Commitment PDA exists for hash(secret_hash || nullifier || amount_bytes)",
+        "- Nullifier not already used (NullifierPDA doesn't exist)",
+        "5. Creates NullifierPDA (marks as used), transfers to recipient",
+        "",
+        "The nullifier breaks the link:",
+        "- Nullifier is derived from nullifier_secret known only to depositor",
+        "- Cannot be correlated to the original commitment without the secrets"
+      ],
+      "discriminator": [
+        90,
+        238,
+        7,
+        17,
+        97,
+        6,
+        181,
+        221
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for the transaction (can be anyone)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "commitment_pda",
+          "docs": [
+            "Commitment PDA - verify it exists and hasn't been spent",
+            "The commitment is recomputed from secret_hash || nullifier || amount"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  109,
+                  105,
+                  116,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "commitment_pda.commitment",
+                "account": "CommitmentPDA"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nullifier_pda",
+          "docs": [
+            "Nullifier PDA - created to mark this nullifier as used",
+            "If this account already exists, the withdrawal will fail (double-spend prevention)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  117,
+                  108,
+                  108,
+                  105,
+                  102,
+                  105,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "nullifier"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "nullifier",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "secret_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "private_withdraw_relayed",
+      "docs": [
+        "Private withdraw via relayer (gasless)",
+        "",
+        "Same as private_withdraw but with relayer paying gas.",
+        "Uses ed25519 signature verification to prove recipient ownership."
+      ],
+      "discriminator": [
+        224,
+        44,
+        61,
+        93,
+        227,
+        80,
+        139,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "relayer",
+          "docs": [
+            "Relayer pays gas"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "commitment_pda",
+          "docs": [
+            "Commitment PDA"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  109,
+                  105,
+                  116,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "commitment_pda.commitment",
+                "account": "CommitmentPDA"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nullifier_pda",
+          "docs": [
+            "Nullifier PDA - created to mark this nullifier as used"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  117,
+                  108,
+                  108,
+                  105,
+                  102,
+                  105,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "nullifier"
+              }
+            ]
+          }
+        },
+        {
+          "name": "instructions_sysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "nullifier",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "secret_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "register_stealth_payment",
       "docs": [
         "Register a stealth payment (metadata only, NO SOL transfer)",
@@ -1575,6 +2063,32 @@
       ]
     },
     {
+      "name": "CommitmentPDA",
+      "discriminator": [
+        6,
+        85,
+        221,
+        174,
+        38,
+        28,
+        173,
+        164
+      ]
+    },
+    {
+      "name": "NullifierPDA",
+      "discriminator": [
+        42,
+        93,
+        11,
+        216,
+        44,
+        39,
+        74,
+        88
+      ]
+    },
+    {
       "name": "PendingWithdraw",
       "discriminator": [
         215,
@@ -1744,6 +2258,21 @@
       "code": 6025,
       "name": "InvalidClaimMessage",
       "msg": "Invalid claim message format (expected 'claim:<pda>')"
+    },
+    {
+      "code": 6026,
+      "name": "NullifierAlreadyUsed",
+      "msg": "Nullifier has already been used (double-spend attempt)"
+    },
+    {
+      "code": 6027,
+      "name": "InvalidCommitmentProof",
+      "msg": "Invalid commitment proof - preimage does not match stored commitment"
+    },
+    {
+      "code": 6028,
+      "name": "CommitmentAlreadySpent",
+      "msg": "Commitment has already been spent"
     }
   ],
   "types": [
@@ -1863,6 +2392,74 @@
           },
           {
             "name": "vault_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CommitmentPDA",
+      "docs": [
+        "Individual PDA for each commitment",
+        "Created when a private deposit is made",
+        "Stores: commitment hash, amount, timestamp, spent status"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "commitment",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "spent",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NullifierPDA",
+      "docs": [
+        "Individual PDA for each used nullifier",
+        "Created when a private withdrawal is made",
+        "Existence of this PDA proves the nullifier has been used"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nullifier",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "used_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
             "type": "u8"
           }
         ]

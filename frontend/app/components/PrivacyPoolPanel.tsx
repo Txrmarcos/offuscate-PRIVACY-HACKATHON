@@ -11,6 +11,10 @@ import {
   AlertTriangle,
   Droplets,
   ExternalLink,
+  Lock,
+  Eye,
+  EyeOff,
+  Zap,
 } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
@@ -18,6 +22,7 @@ import { useProgram } from '../lib/program';
 import { PrivacyPoolData, PendingWithdrawData, ALLOWED_WITHDRAW_AMOUNTS, MIN_DELAY_SECONDS, MAX_DELAY_SECONDS } from '../lib/program/client';
 import { useStealth } from '../lib/stealth/StealthContext';
 import { deriveStealthSpendingKey } from '../lib/stealth';
+import { PrivateNote, formatCommitment } from '../lib/privacy';
 
 interface PrivacyPoolPanelProps {
   onClose?: () => void;
@@ -36,6 +41,12 @@ export function PrivacyPoolPanel({ onClose }: PrivacyPoolPanelProps) {
     fetchPoolStats,
     fetchPendingWithdraw,
     isPoolInitialized,
+    // Phase 3: Commitment-based privacy
+    privateDeposit,
+    privateWithdraw,
+    getUnspentPrivateNotes,
+    // Quick Withdraw (privacidade máxima)
+    quickWithdrawAllToStealth,
   } = useProgram();
 
   const [poolStats, setPoolStats] = useState<PrivacyPoolData | null>(null);
@@ -55,6 +66,12 @@ export function PrivacyPoolPanel({ onClose }: PrivacyPoolPanelProps) {
   } | null>(null);
   const [mainWalletBalance, setMainWalletBalance] = useState<number>(0);
   const [stealthBalance, setStealthBalance] = useState<number>(0);
+
+  // Phase 3: Commitment-based privacy
+  const [phase3Mode, setPhase3Mode] = useState<boolean>(true); // Use Phase 3 by default
+  const [privateNotes, setPrivateNotes] = useState<PrivateNote[]>([]);
+  const [selectedNote, setSelectedNote] = useState<PrivateNote | null>(null);
+  const [showSecrets, setShowSecrets] = useState<boolean>(false);
 
   // Derived stealth keypair for withdrawals
   const [stealthKeypair, setStealthKeypair] = useState<Keypair | null>(null);
@@ -106,12 +123,20 @@ export function PrivacyPoolPanel({ onClose }: PrivacyPoolPanelProps) {
           console.error('Failed to fetch stealth balance');
         }
       }
+
+      // Load Phase 3 private notes
+      try {
+        const notes = await getUnspentPrivateNotes();
+        setPrivateNotes(notes);
+      } catch {
+        console.error('Failed to load private notes');
+      }
     } catch (err) {
       console.error('Failed to load pool data:', err);
     } finally {
       setLoading(false);
     }
-  }, [fetchPoolStats, fetchPendingWithdraw, checkRelayerStatus, stealthKeypair, publicKey]);
+  }, [fetchPoolStats, fetchPendingWithdraw, checkRelayerStatus, stealthKeypair, publicKey, getUnspentPrivateNotes]);
 
   // Generate deterministic stealth keypair based on wallet address
   // This ensures the same wallet always gets the same stealth address
@@ -191,7 +216,7 @@ export function PrivacyPoolPanel({ onClose }: PrivacyPoolPanelProps) {
     }
   };
 
-  // Request withdrawal
+  // Request withdrawal (Phase 1/2 - legacy)
   const handleRequestWithdraw = async () => {
     if (!stealthKeypair) {
       setError('Stealth keys not available');
@@ -208,6 +233,44 @@ export function PrivacyPoolPanel({ onClose }: PrivacyPoolPanelProps) {
       setSuccess(`Withdrawal requested! Variable delay applied for privacy.`);
     } catch (err: any) {
       setError(err.message || 'Failed to request withdrawal');
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  // Phase 3: Private deposit with commitment
+  const handlePrivateDeposit = async () => {
+    setProcessing('private-deposit');
+    setError(null);
+    try {
+      const { signature, note } = await privateDeposit(selectedAmount);
+      setTxSignature(signature);
+      setSuccess(`Private deposit successful! Commitment stored securely.`);
+      await loadPoolData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to make private deposit');
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  // Phase 3: Private withdraw with nullifier
+  const handlePrivateWithdraw = async (note: PrivateNote) => {
+    if (!stealthKeypair) {
+      setError('Stealth keys not available');
+      return;
+    }
+
+    setProcessing('private-withdraw');
+    setError(null);
+    try {
+      const sig = await privateWithdraw(note, stealthKeypair.publicKey);
+      setTxSignature(sig);
+      setSuccess(`Private withdrawal successful! Nullifier recorded.`);
+      setSelectedNote(null);
+      await loadPoolData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to make private withdrawal');
     } finally {
       setProcessing(null);
     }
@@ -263,6 +326,35 @@ export function PrivacyPoolPanel({ onClose }: PrivacyPoolPanelProps) {
       await loadPoolData();
     } catch (err: any) {
       setError(err.message || 'Failed to transfer');
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  // QUICK WITHDRAW ALL: Saca TODAS as private notes para o stealth (privacidade máxima)
+  const handleQuickWithdrawAll = async () => {
+    if (!stealthKeypair || !publicKey) {
+      setError('Stealth keys or wallet not available');
+      return;
+    }
+
+    if (privateNotes.length === 0) {
+      setError('No private notes available');
+      return;
+    }
+
+    setProcessing('quick-withdraw-all');
+    setError(null);
+    try {
+      const results = await quickWithdrawAllToStealth(stealthKeypair);
+      if (results.length > 0) {
+        setTxSignature(results[results.length - 1].signature);
+        const totalAmount = results.reduce((acc, r) => acc + (r.note.amount / LAMPORTS_PER_SOL), 0);
+        setSuccess(`Saque privado completo! ${totalAmount.toFixed(2)} SOL no seu endereço stealth.`);
+      }
+      await loadPoolData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to quick withdraw all');
     } finally {
       setProcessing(null);
     }
@@ -511,10 +603,126 @@ export function PrivacyPoolPanel({ onClose }: PrivacyPoolPanelProps) {
             </div>
           )}
 
-          {/* Request Withdrawal */}
+          {/* Phase 3 Mode Toggle */}
+          <div className="mx-5 mb-3 p-3 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20 rounded-lg">
+            <label className="flex items-center justify-between cursor-pointer">
+              <div className="flex items-center gap-2">
+                <Lock className="w-4 h-4 text-green-400" />
+                <div>
+                  <span className="text-sm font-medium text-white">Phase 3: ZK Privacy Mode</span>
+                  <p className="text-xs text-green-400/70">Commitment + Nullifier (quebra linkabilidade)</p>
+                </div>
+              </div>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={phase3Mode}
+                  onChange={(e) => setPhase3Mode(e.target.checked)}
+                  className="sr-only"
+                />
+                <div className={`w-10 h-5 rounded-full transition-colors ${phase3Mode ? 'bg-green-500' : 'bg-[#404040]'}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${phase3Mode ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </div>
+              </div>
+            </label>
+          </div>
+
+          {/* Phase 3: Private Notes (unspent commitments) */}
+          {phase3Mode && privateNotes.length > 0 && (
+            <div className="mx-5 mb-5 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-green-400" />
+                  <span className="text-green-400 font-medium">Private Notes (Saques Disponíveis)</span>
+                </div>
+                <button
+                  onClick={() => setShowSecrets(!showSecrets)}
+                  className="text-xs text-[#737373] hover:text-white flex items-center gap-1"
+                >
+                  {showSecrets ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                  {showSecrets ? 'Ocultar' : 'Mostrar'}
+                </button>
+              </div>
+
+              {/* QUICK WITHDRAW TO STEALTH - Privacidade Máxima */}
+              <button
+                onClick={handleQuickWithdrawAll}
+                disabled={processing === 'quick-withdraw-all'}
+                className="w-full mb-3 py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-green-500/20"
+              >
+                {processing === 'quick-withdraw-all' ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5" />
+                    Sacar Tudo para Stealth
+                    <span className="ml-1 px-2 py-0.5 bg-white/20 rounded text-sm">
+                      {privateNotes.reduce((acc, n) => acc + (n.amount / LAMPORTS_PER_SOL), 0).toFixed(2)} SOL
+                    </span>
+                  </>
+                )}
+              </button>
+              <div className="mb-4 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <p className="text-xs text-green-400 text-center flex items-center justify-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  Privacidade máxima: use o stealth address diretamente
+                </p>
+                <p className="text-xs text-green-400/60 text-center mt-1">
+                  Transferir para carteira principal quebraria a privacidade
+                </p>
+              </div>
+
+              {/* Lista de notes individuais (opção avançada) */}
+              <details className="group">
+                <summary className="text-xs text-[#525252] cursor-pointer hover:text-white flex items-center gap-1 mb-2">
+                  <span className="group-open:rotate-90 transition-transform">▶</span>
+                  Ver notes individuais ({privateNotes.length})
+                </summary>
+                <div className="space-y-2 mt-2">
+                  {privateNotes.map((note, idx) => (
+                    <div key={idx} className="p-3 bg-[#1a1a1a] rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-white font-medium">{(note.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</span>
+                        <span className="text-xs text-[#525252]">
+                          {new Date(note.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {showSecrets && (
+                        <div className="text-xs text-[#525252] mb-2 font-mono">
+                          <p>Commitment: {formatCommitment(note.commitment)}</p>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handlePrivateWithdraw(note)}
+                        disabled={processing === 'private-withdraw' || processing === 'quick-withdraw-all'}
+                        className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        {processing === 'private-withdraw' ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <ArrowDownToLine className="w-3 h-3" />
+                        )}
+                        Sacar para Stealth
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </details>
+              <p className="text-xs text-green-400/50 mt-3 text-center">
+                Nullifier previne double-spend, commitment oculta origem
+              </p>
+            </div>
+          )}
+
+          {/* Deposit / Withdraw Section */}
           {(!pendingWithdraw || pendingWithdraw.claimed) && (
             <div className="mx-5 mb-5 p-4 bg-[#1a1a1a] border border-[#262626] rounded-lg">
-              <p className="text-sm text-[#737373] mb-3">Request Withdrawal (standardized amounts)</p>
+              <p className="text-sm text-[#737373] mb-3">
+                {phase3Mode ? 'Private Deposit (ZK Mode)' : 'Request Withdrawal'} - Standardized amounts
+              </p>
               <div className="flex gap-2 mb-4">
                 {ALLOWED_WITHDRAW_AMOUNTS.map(amt => (
                   <button
@@ -522,7 +730,7 @@ export function PrivacyPoolPanel({ onClose }: PrivacyPoolPanelProps) {
                     onClick={() => setSelectedAmount(amt)}
                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                       selectedAmount === amt
-                        ? 'bg-purple-500 text-white'
+                        ? phase3Mode ? 'bg-green-500 text-white' : 'bg-purple-500 text-white'
                         : 'bg-[#262626] text-[#737373] hover:text-white'
                     }`}
                   >
@@ -530,20 +738,42 @@ export function PrivacyPoolPanel({ onClose }: PrivacyPoolPanelProps) {
                   </button>
                 ))}
               </div>
-              <button
-                onClick={handleRequestWithdraw}
-                disabled={processing === 'request' || poolStats.currentBalance < selectedAmount}
-                className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {processing === 'request' ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <ArrowDownToLine className="w-4 h-4" />
-                )}
-                Request {selectedAmount} SOL
-              </button>
+
+              {phase3Mode ? (
+                // Phase 3: Private Deposit
+                <button
+                  onClick={handlePrivateDeposit}
+                  disabled={processing === 'private-deposit' || (poolStats?.currentBalance ?? 0) < selectedAmount}
+                  className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {processing === 'private-deposit' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Lock className="w-4 h-4" />
+                  )}
+                  Depósito Privado {selectedAmount} SOL
+                </button>
+              ) : (
+                // Legacy: Request Withdrawal
+                <button
+                  onClick={handleRequestWithdraw}
+                  disabled={processing === 'request' || poolStats.currentBalance < selectedAmount}
+                  className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {processing === 'request' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ArrowDownToLine className="w-4 h-4" />
+                  )}
+                  Request {selectedAmount} SOL
+                </button>
+              )}
+
               <p className="text-xs text-[#737373] mt-2 text-center">
-                Variable delay: {MIN_DELAY_SECONDS}s - {MAX_DELAY_SECONDS / 60}min before claim
+                {phase3Mode
+                  ? 'Commitment armazenado localmente. Guarde suas chaves!'
+                  : `Variable delay: ${MIN_DELAY_SECONDS}s - ${MAX_DELAY_SECONDS / 60}min before claim`
+                }
               </p>
             </div>
           )}
@@ -583,7 +813,17 @@ export function PrivacyPoolPanel({ onClose }: PrivacyPoolPanelProps) {
         <p className="text-xs text-[#737373] text-center">
           Privacy Pool breaks the on-chain link between depositors and recipients.
           <br />
-          <span className="text-purple-400">Anti-correlation features:</span> Variable delay ({MIN_DELAY_SECONDS}s-{MAX_DELAY_SECONDS / 60}min) + Standardized amounts + Pool churn
+          {phase3Mode ? (
+            <>
+              <span className="text-green-400">Phase 3 ZK Mode:</span> Commitment oculta depositor + Nullifier previne double-spend
+              <br />
+              <span className="text-green-400/70">Mesmo com indexador avançado, linkabilidade é quebrada</span>
+            </>
+          ) : (
+            <>
+              <span className="text-purple-400">Anti-correlation features:</span> Variable delay ({MIN_DELAY_SECONDS}s-{MAX_DELAY_SECONDS / 60}min) + Standardized amounts + Pool churn
+            </>
+          )}
           {relayerStatus?.configured && (
             <>
               <br />

@@ -20,48 +20,48 @@ export function CampaignCard({ campaign, onSupport }: CampaignCardProps) {
   const privacyLevel = campaign.privacyLevel || campaign.privacy || 'SEMI';
 
   return (
-    <div className="p-6 bg-[#141414] border border-[#262626] rounded-xl flex flex-col">
+    <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-all flex flex-col">
       <div className="flex items-start justify-between mb-3">
         <span
-          className={`px-3 py-1 text-xs font-medium rounded-full ${
+          className={`px-2.5 py-1 text-[10px] font-medium rounded-lg ${
             privacyLevel === 'PRIVATE'
               ? 'bg-white text-black'
               : privacyLevel === 'SEMI'
-              ? 'bg-[#262626] text-white'
-              : 'bg-[#262626] text-[#737373]'
+              ? 'bg-white/[0.08] text-white/60'
+              : 'bg-white/[0.04] text-white/30'
           }`}
         >
           {PRIVACY_LABELS[privacyLevel]}
         </span>
-        <div className="flex items-center gap-1 text-[#737373] text-sm">
-          <Users className="w-4 h-4" />
+        <div className="flex items-center gap-1 text-white/30 text-xs">
+          <Users className="w-3.5 h-3.5" />
           <span>{formatNumber(campaign.supporters)}</span>
         </div>
       </div>
 
-      <h3 className="text-white font-semibold text-lg mb-2">{campaign.title}</h3>
-      <p className="text-[#737373] text-sm mb-6 flex-1">{campaign.description}</p>
+      <h3 className="text-white font-medium text-lg mb-2">{campaign.title}</h3>
+      <p className="text-white/40 text-sm mb-6 flex-1 line-clamp-2">{campaign.description}</p>
 
       <div className="mb-4">
-        <div className="flex items-center justify-between text-sm mb-2">
-          <span className="text-[#737373]">Progress</span>
-          <span className="text-white">{progress}%</span>
+        <div className="flex items-center justify-between text-xs mb-2">
+          <span className="text-white/30">Progress</span>
+          <span className="text-white font-mono">{progress}%</span>
         </div>
-        <div className="h-1 bg-[#262626] rounded-full overflow-hidden">
+        <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
           <div
-            className="h-full progress-bar rounded-full transition-all"
-            style={{ width: `${progress}%` }}
+            className="h-full bg-white rounded-full transition-all"
+            style={{ width: `${Math.min(100, progress)}%` }}
           />
         </div>
-        <div className="flex items-center justify-between text-xs text-[#737373] mt-2">
-          <span>{campaign.raised} SOL RAISED</span>
+        <div className="flex items-center justify-between text-[10px] text-white/25 mt-2 uppercase tracking-wide">
+          <span>{campaign.raised.toFixed(2)} SOL RAISED</span>
           <span>GOAL: {campaign.goal} SOL</span>
         </div>
       </div>
 
       <button
         onClick={() => onSupport(campaign)}
-        className="w-full py-3.5 border border-[#262626] text-white font-medium rounded-full hover:bg-[#1a1a1a] transition-colors"
+        className="w-full py-3 border border-white/[0.1] text-white text-sm font-medium rounded-xl hover:bg-white/[0.03] transition-all active:scale-[0.98]"
       >
         Support Mission
       </button>
