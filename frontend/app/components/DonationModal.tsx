@@ -20,6 +20,7 @@ import {
   parseStealthMetaAddress,
 } from '../lib/stealth';
 import { privateDonation, type ShadowWireWallet } from '../lib/privacy/shadowWire';
+import { privateZKDonation, type LightWallet, isLightProtocolAvailable } from '../lib/privacy/lightProtocol';
 import { triggerOffuscation } from './WaveMeshBackground';
 
 const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
@@ -35,6 +36,7 @@ const privacyOptions: {
   title: string;
   description: string;
   icon: typeof Eye;
+  badge?: string;
 }[] = [
   {
     level: 'PUBLIC',
@@ -49,10 +51,18 @@ const privacyOptions: {
     icon: Shield,
   },
   {
-    level: 'PRIVATE',
-    title: 'Fully Private',
-    description: 'ZK Proof via ShadowWire. Amount hidden.',
+    level: 'ZK_COMPRESSED',
+    title: 'ZK Compressed',
+    description: 'Light Protocol ZK compression. Breaks sender link.',
     icon: Lock,
+    badge: 'Devnet',
+  },
+  {
+    level: 'PRIVATE',
+    title: 'ShadowWire',
+    description: 'Bulletproofs ZK. Amount hidden.',
+    icon: Lock,
+    badge: 'Mainnet',
   },
 ];
 
@@ -150,6 +160,31 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
 
         if (!result.success) {
           throw new Error(result.error || 'Private donation failed');
+        }
+
+        setTxSignature(result.signature!);
+        setIsDone(true);
+        triggerOffuscation();
+
+      } else if (selectedPrivacy === 'ZK_COMPRESSED') {
+        // Light Protocol ZK Compressed donation
+        const { vaultPda } = getCampaignPDAs(campaign.id);
+
+        if (!signTransaction) {
+          setError('Your wallet does not support required signing.');
+          setIsProcessing(false);
+          return;
+        }
+
+        const lightWallet: LightWallet = {
+          publicKey: publicKey!,
+          signTransaction: signTransaction as any,
+        };
+
+        const result = await privateZKDonation(lightWallet, vaultPda, amountSol);
+
+        if (!result.success) {
+          throw new Error(result.error || 'ZK Compressed donation failed');
         }
 
         setTxSignature(result.signature!);
@@ -330,29 +365,45 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
           <label className="block text-[10px] text-white/25 uppercase tracking-wide mb-2">
             Privacy Level
           </label>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {privacyOptions.map((option) => (
               <button
                 key={option.level}
                 onClick={() => setSelectedPrivacy(option.level)}
                 className={`relative p-4 rounded-xl border text-left transition-all h-full ${
                   selectedPrivacy === option.level
-                    ? 'border-white bg-white/[0.05]'
+                    ? option.level === 'ZK_COMPRESSED'
+                      ? 'border-purple-400 bg-purple-400/[0.05]'
+                      : 'border-white bg-white/[0.05]'
                     : 'border-white/[0.06] hover:border-white/[0.1]'
                 }`}
               >
                 {selectedPrivacy === option.level && (
-                  <span className="absolute top-3 right-3 w-2 h-2 bg-green-400 rounded-full" />
+                  <span className={`absolute top-3 right-3 w-2 h-2 rounded-full ${
+                    option.level === 'ZK_COMPRESSED' ? 'bg-purple-400' : 'bg-green-400'
+                  }`} />
+                )}
+                {option.badge && (
+                  <span className={`absolute top-3 right-8 text-[9px] px-1.5 py-0.5 rounded ${
+                    option.level === 'ZK_COMPRESSED'
+                      ? 'bg-purple-400/10 text-purple-400'
+                      : 'bg-white/10 text-white/40'
+                  }`}>
+                    {option.badge}
+                  </span>
                 )}
                 <option.icon
                   className={`w-5 h-5 mb-3 ${
                     selectedPrivacy === option.level
-                      ? 'text-white'
+                      ? option.level === 'ZK_COMPRESSED' ? 'text-purple-400' : 'text-white'
                       : 'text-white/30'
                   }`}
                 />
                 <div className="text-white font-medium mb-1">{option.title}</div>
                 <p className="text-white/40 text-xs">{option.description}</p>
+                {option.level === 'ZK_COMPRESSED' && (
+                  <p className="text-purple-400 text-xs mt-1">Light Protocol</p>
+                )}
                 {option.level === 'SEMI' && (
                   <p className="text-green-400 text-xs mt-1">Recommended</p>
                 )}
@@ -390,10 +441,33 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
           </div>
         )}
 
+        {selectedPrivacy === 'ZK_COMPRESSED' && (
+          <div className="mb-4 p-4 bg-purple-400/5 border border-purple-400/10 rounded-xl">
+            <div className="flex items-start gap-3">
+              <Lock className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-purple-400 text-sm font-medium mb-1">Light Protocol ZK Compression</p>
+                <p className="text-white/40 text-xs mb-2">
+                  Your SOL is compressed into a Merkle tree. The sender-receiver link is broken via ZK proofs.
+                </p>
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <div className="flex items-center gap-1 text-white/30">
+                    <Shield className="w-3 h-3" />
+                    <span>Privacy: <span className="text-purple-400">Groth16 ZK Proofs</span></span>
+                  </div>
+                  <div className="flex items-center gap-1 text-white/30">
+                    <span>Savings: <span className="text-purple-400">~99% on-chain</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {selectedPrivacy === 'PRIVATE' && (
           <div className="mb-4 p-4 bg-green-400/5 border border-green-400/10 rounded-xl">
             <p className="text-green-400 text-sm">
-              <strong>ShadowWire ZK Transfer</strong>: Your donation amount will be hidden using Bulletproofs (zero-knowledge proofs).
+              <strong>ShadowWire ZK Transfer</strong>: Your donation amount will be hidden using Bulletproofs (zero-knowledge proofs). <span className="text-white/40">(Mainnet only)</span>
             </p>
           </div>
         )}
@@ -412,12 +486,14 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
           {isProcessing ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              {selectedPrivacy === 'PRIVATE' ? 'Generating ZK Proof...' :
+              {selectedPrivacy === 'ZK_COMPRESSED' ? 'Compressing & Transferring...' :
+               selectedPrivacy === 'PRIVATE' ? 'Generating ZK Proof...' :
                selectedPrivacy === 'SEMI' ? 'Depositing to Pool...' : 'Processing...'}
             </>
           ) : connected ? (
             <>
-              {selectedPrivacy === 'SEMI' ? `Deposit ${amount} SOL to Pool` : `Donate ${amount} SOL`}
+              {selectedPrivacy === 'SEMI' ? `Deposit ${amount} SOL to Pool` :
+               selectedPrivacy === 'ZK_COMPRESSED' ? `ZK Donate ${amount} SOL` : `Donate ${amount} SOL`}
               <ArrowRight className="w-4 h-4" />
             </>
           ) : (

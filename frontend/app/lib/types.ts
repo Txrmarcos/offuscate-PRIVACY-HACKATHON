@@ -1,4 +1,4 @@
-export type PrivacyLevel = 'PUBLIC' | 'SEMI' | 'PRIVATE';
+export type PrivacyLevel = 'PUBLIC' | 'SEMI' | 'PRIVATE' | 'ZK_COMPRESSED';
 
 export interface Campaign {
   id: string;
@@ -26,4 +26,5 @@ export const PRIVACY_LABELS: Record<PrivacyLevel, string> = {
   PUBLIC: 'Public',
   SEMI: 'Semi',
   PRIVATE: 'Private',
+  ZK_COMPRESSED: 'ZK Compressed',
 };

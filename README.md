@@ -1,78 +1,108 @@
 # Offuscate - Private Donations on Solana
 
-> **Privacy-first donation platform** que quebra a linkabilidade entre doadores e destinatários através de múltiplas camadas de privacidade.
+> **Privacy-first donation platform** that breaks the linkability between donors and recipients through multiple layers of cryptographic privacy.
 
 ![Solana](https://img.shields.io/badge/Solana-Devnet-green)
 ![Anchor](https://img.shields.io/badge/Anchor-0.31.1-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
+![Privacy](https://img.shields.io/badge/Privacy-Maximum-purple)
 
-## 🎯 Status
+## Status
 
-**✅ FULLY IMPLEMENTED & DEPLOYED ON DEVNET**
+**FULLY IMPLEMENTED & DEPLOYED ON DEVNET**
 
-| Feature | Status |
-|---------|--------|
-| Privacy Pool | ✅ Deployed |
-| Variable Delay (30s-5min) | ✅ Working |
-| Standardized Amounts | ✅ Working |
-| Batch Withdrawals | ✅ Working |
-| Pool Churn | ✅ Working |
-| Stealth Addresses | ✅ Working |
-| Relayer (Gasless) | ✅ Working |
-| **Phase 3: ZK Privacy** | ✅ **Working** |
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Privacy Pool | Working | Fund mixing with variable delays |
+| Stealth Addresses | Working | One-time ECDH-derived addresses |
+| Relayer (Gasless) | Working | Gas abstraction for recipients |
+| Commitment Privacy | Working | ZK-like commitment/nullifier scheme |
+| Variable Delay | Working | 30s-5min pseudo-random delays |
+| Standardized Amounts | Working | 0.1, 0.5, 1.0 SOL only |
+| Batch Withdrawals | Working | Multiple claims per transaction |
+| Pool Churn | Working | Internal mixing for graph resistance |
 
-## 📦 Deployed Addresses (Devnet)
+## Deployed Addresses (Devnet)
 
 ```
 Program ID:  5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
 Relayer:     BEfcVt7sUkRC4HVmWn2FHLkKPKMu1uhkXb4dDr5g7A1a
 ```
 
-## 🏗 Architecture
+## Privacy Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                 OFFUSCATE PRIVACY STACK                  │
-├─────────────────────────────────────────────────────────┤
-│  PHASE 3: Commitment + Nullifier (ZK-Like)              │
-│  └── Quebra linkabilidade mesmo com indexador avançado  │
-├─────────────────────────────────────────────────────────┤
-│  PHASE 2: Gas Abstraction (Relayer)                     │
-│  └── Stealth address NÃO aparece como fee payer         │
-├─────────────────────────────────────────────────────────┤
-│  PHASE 1: Privacy Pool                                  │
-│  └── Variable delay + Standardized amounts + Churn      │
-├─────────────────────────────────────────────────────────┤
-│  BASE: Stealth Addresses                                │
-│  └── One-time addresses derivados via ECDH              │
-└─────────────────────────────────────────────────────────┘
+                    OFFUSCATE PRIVACY STACK
+┌─────────────────────────────────────────────────────────────┐
+│  LAYER 3: Commitment + Nullifier (ZK-Like)                  │
+│  └── Even advanced indexers cannot correlate deposits       │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 2: Gas Abstraction (Relayer)                         │
+│  └── Stealth address never appears as fee payer             │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 1: Privacy Pool                                      │
+│  └── Variable delay + Standardized amounts + Pool churn     │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 0: Stealth Addresses                                 │
+│  └── One-time addresses derived via ECDH                    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## 🔐 Como Funciona
+## How It Works
 
-### Fluxo de Depósito Privado (Phase 3)
-
-```
-1. Gera secrets localmente (secret + nullifier_secret)
-2. Computa commitment = SHA256(secret_hash || nullifier || amount)
-3. On-chain: cria CommitmentPDA com apenas o hash
-4. Salva secrets em localStorage
-
-→ Nenhuma informação sobre o depositor é armazenada on-chain
-```
-
-### Fluxo de Saque Privado
+### Maximum Privacy Flow
 
 ```
-1. Fornece nullifier + secret_hash + amount
-2. On-chain verifica: commitment matches + nullifier unused
-3. Cria NullifierPDA (previne double-spend)
-4. Transfere para stealth address
-
-→ Impossível correlacionar com o depósito original
+Donor Wallet                                         Campaign Owner
+     │                                                      ▲
+     │  1. Generate commitment (secret + nullifier)         │
+     ▼                                                      │
+ ┌─────────┐                                                │
+ │Commitment│ = SHA256(secret_hash || nullifier || amount)  │
+ └────┬────┘                                                │
+      │  2. Deposit to Privacy Pool                         │
+      ▼                                                     │
+ ┌─────────────┐                                            │
+ │ Pool Vault  │  ← Funds mixed from all donors             │
+ └──────┬──────┘                                            │
+        │                                                   │
+        │  3. Variable delay (30s - 5min)                   │
+        ▼                                                   │
+ ┌─────────────────┐                                        │
+ │ Generate stealth│  ← One-time unlinkable address         │
+ │ address         │                                        │
+ └────────┬────────┘                                        │
+          │                                                 │
+          │  4. Claim via Relayer (gasless)                 │
+          ▼                                                 │
+ ┌──────────────────┐                                       │
+ │     Relayer      │  ← Pays gas, no fee payer exposure    │
+ └────────┬─────────┘                                       │
+          │                                                 │
+          │  5. Funds to stealth address                    │
+          ▼                                                 │
+ ┌─────────────────┐                                        │
+ │ Stealth Address │────────────────────────────────────────┘
+ └─────────────────┘
+          │
+          │  6. Owner derives spending key
+          ▼
+ ┌─────────────────┐
+ │ Owner's Wallet  │  ← Clean, unlinkable funds
+ └─────────────────┘
 ```
 
-## 🚀 Quick Start
+### What Adversaries See vs. Cannot Determine
+
+| What They See | What They Cannot Determine |
+|---------------|---------------------------|
+| Commitment hash | Who deposited |
+| Nullifier hash | Which deposit corresponds |
+| Stealth address | Recipient identity |
+| Standardized amounts | Amount correlation |
+| Variable timing | Timing correlation |
+
+## Quick Start
 
 ### Prerequisites
 
@@ -113,130 +143,146 @@ npm run build && npm start
 
 ```bash
 # frontend/.env.local
-NEXT_PUBLIC_HELIUS_RPC_URL=https://devnet.helius-rpc.com?api-key=<your-key>
-RELAYER_SECRET_KEY=<base58-encoded-keypair>
+NEXT_PUBLIC_HELIUS_RPC_URL=https://devnet.helius-rpc.com?api-key=YOUR_KEY
+RELAYER_SECRET_KEY=<base58_encoded_keypair>
 ```
 
-## 📖 Documentation
+## Privacy Guarantees
 
-- [**PRIVACY_SYSTEM_DOCS.md**](./PRIVACY_SYSTEM_DOCS.md) - Documentação técnica completa
-- [**PHASE3_ZK_PRIVACY.md**](./PHASE3_ZK_PRIVACY.md) - Detalhes do sistema commitment/nullifier
-- [**PRIVACY_POOL.md**](./PRIVACY_POOL.md) - Documentação do Privacy Pool
+### Threats Mitigated
 
-## 🛡 Privacy Guarantees
+| Threat | Attack Vector | Mitigation |
+|--------|---------------|------------|
+| Timing Correlation | Match deposit/withdraw times | Variable delay (30s-5min) |
+| Amount Correlation | Match deposit/withdraw amounts | Standardized amounts only |
+| Graph Analysis | Trace fund flow | Pool mixing + churn |
+| Address Reuse | Link multiple payments | Stealth addresses |
+| Fee Payer Exposure | Identify recipient via gas | Relayer pays gas |
+| Indexer Correlation | Advanced on-chain analysis | Commitment + nullifier |
+| Double-Spend | Withdraw same deposit twice | NullifierPDA uniqueness |
 
-### O que protegemos:
+### Mathematical Guarantee
 
-| Ameaça | Mitigação |
-|--------|-----------|
-| Timing correlation | Variable delay (30s-5min) |
-| Amount correlation | Standardized amounts (0.1, 0.5, 1 SOL) |
-| Graph analysis | Pool mixing + churn |
-| Address reuse | Stealth addresses |
-| Fee payer exposure | Relayer (gasless claims) |
-| Indexer correlation | **Commitment + Nullifier** |
-| Double-spend | NullifierPDA uniqueness |
+Without `secret` and `nullifier_secret` (stored locally only), it is cryptographically impossible to prove which deposit matches which withdrawal, even with complete blockchain access.
 
-### O que um adversário vê:
+## Documentation
 
-```
-Depósito: [commitment_hash] [amount] [timestamp]
-Saque:    [nullifier_hash] [stealth_address] [amount]
+| Document | Description |
+|----------|-------------|
+| [PRIVACY_SYSTEM_DOCS.md](./PRIVACY_SYSTEM_DOCS.md) | Complete technical documentation |
+| [PRIVACY_POOL.md](./PRIVACY_POOL.md) | Privacy Pool details |
+| [PHASE3_ZK_PRIVACY.md](./PHASE3_ZK_PRIVACY.md) | Commitment/Nullifier system |
 
-❌ Não consegue: linkar depósito → saque
-❌ Não consegue: identificar depositor
-❌ Não consegue: correlacionar timing/amount específico
-```
-
-## 🔧 Tech Stack
-
-**Smart Contract:**
-- Anchor Framework
-- Solana Program Library
-- Ed25519 signature verification
-
-**Frontend:**
-- Next.js 16
-- @solana/web3.js
-- @coral-xyz/anchor
-- @noble/hashes (SHA256)
-- TailwindCSS
-
-**Privacy Libraries:**
-- Custom stealth address implementation (ECDH)
-- Commitment/nullifier scheme (SHA256-based)
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 ├── programs/
 │   └── offuscate/
 │       └── src/
-│           └── lib.rs          # Smart contract
+│           └── lib.rs              # Smart contract
 ├── frontend/
 │   └── app/
 │       ├── components/
-│       │   └── PrivacyPoolPanel.tsx
+│       │   ├── WaveMeshBackground.tsx  # Animated privacy visualization
+│       │   ├── DonationModal.tsx       # Privacy-aware donations
+│       │   └── PrivacyPoolPanel.tsx    # Pool UI
 │       ├── lib/
-│       │   ├── program/        # Anchor client
-│       │   ├── privacy/        # Commitment/nullifier
-│       │   └── stealth/        # Stealth addresses
+│       │   ├── program/            # Anchor client
+│       │   ├── privacy/            # Commitment/nullifier
+│       │   └── stealth/            # Stealth addresses (ECDH)
 │       └── api/
-│           └── relayer/        # Gasless endpoints
-├── PRIVACY_SYSTEM_DOCS.md      # Full documentation
+│           └── relayer/            # Gasless claim endpoints
+├── PRIVACY_SYSTEM_DOCS.md          # Full documentation
+├── PRIVACY_POOL.md                 # Pool documentation
 └── README.md
 ```
 
-## 🎮 Usage Examples
+## Tech Stack
 
-### Private Deposit
+**Smart Contract:**
+- Anchor Framework (Rust)
+- Solana Program Library
+- Ed25519 signature verification on-chain
+
+**Frontend:**
+- Next.js 16
+- @solana/web3.js
+- @coral-xyz/anchor
+- @noble/hashes (SHA256, ed25519)
+- @noble/curves (x25519 ECDH)
+- TailwindCSS
+
+**Privacy Libraries:**
+- Custom stealth address implementation (ECDH curve25519)
+- Commitment/nullifier scheme (SHA256-based, Tornado-inspired)
+
+## Usage Examples
+
+### Private Donation
 
 ```typescript
 import { useProgram } from './lib/program';
 
-const { privateDeposit } = useProgram();
+const { poolDeposit } = useProgram();
 
-// Deposit 0.5 SOL with commitment privacy
+// Deposit to Privacy Pool (commitment generated automatically)
 const { signature, note } = await privateDeposit(0.5);
-// note is automatically saved to localStorage
+// note saved to localStorage - REQUIRED for withdrawal
 ```
 
-### Private Withdraw
+### Gasless Withdrawal
 
 ```typescript
-const { privateWithdraw, getUnspentPrivateNotes } = useProgram();
+const { privateWithdrawRelayed, getUnspentPrivateNotes } = useProgram();
 
-// Get available notes
+// Get saved notes
 const notes = await getUnspentPrivateNotes();
 
-// Withdraw to stealth address
-await privateWithdraw(notes[0], stealthKeypair.publicKey);
+// Withdraw via relayer (no gas needed)
+const result = await privateWithdrawRelayed(notes[0], stealthKeypair);
+console.log(`Relayer paid gas: ${result.relayer}`);
 ```
 
-### Gasless Withdraw (via Relayer)
+## Security Considerations
 
-```typescript
-const { privateWithdrawRelayed } = useProgram();
+1. **Backup Notes**: Private notes in localStorage - backup regularly
+2. **Anonymity Set**: More users = stronger privacy
+3. **Wait Before Withdrawing**: More time = more mixing
+4. **Use Stealth Addresses**: Always use as recipient
+5. **Use Relayer**: Never pay gas with stealth address
 
-// Relayer pays gas, stealth address receives funds
-const result = await privateWithdrawRelayed(note, stealthKeypair);
-console.log(`Relayer: ${result.relayer}`);
-```
+## Visual Effects
 
-## ⚠️ Security Considerations
+The UI includes an animated wave mesh background that triggers an "offuscation" effect when transactions complete, visually representing the privacy protection. Connections dynamically disconnect and reconnect, symbolizing the unlinkability of transactions.
 
-1. **Backup Notes**: Private notes são armazenados em localStorage. Faça backup!
-2. **Anonymity Set**: Maior número de usuários = maior privacidade
-3. **Timing**: Aguarde antes de sacar para maximizar privacidade
-4. **Stealth Address**: Sempre use stealth address como recipient
+## API Endpoints
 
-## 📜 License
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/relayer/claim` | GET | Check relayer status |
+| `/api/relayer/claim` | POST | Gasless claim from pool |
+| `/api/relayer/private-claim` | POST | Gasless claim with commitment |
+
+## Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing`)
+5. Open Pull Request
+
+## License
 
 MIT
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Tornado Cash (commitment/nullifier inspiration)
 - Light Protocol (ZK compression concepts)
 - Solana Foundation
 - Helius (RPC infrastructure)
+
+---
+
+*Privacy Hackathon SOL 2025*
+*Program ID: `5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq`*

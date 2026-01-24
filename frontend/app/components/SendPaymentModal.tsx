@@ -16,6 +16,7 @@ const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.co
 const devnetConnection = new Connection(RPC_URL, 'confirmed');
 import { PrivacyLevel } from '../lib/types';
 import { generateStealthAddress, parseStealthMetaAddress, StealthAddressResult } from '../lib/stealth';
+import { privateZKDonation, type LightWallet } from '../lib/privacy/lightProtocol';
 import { triggerOffuscation } from './WaveMeshBackground';
 
 interface SendPaymentModalProps {
@@ -29,6 +30,7 @@ const privacyOptions: {
   title: string;
   description: string;
   icon: typeof Eye;
+  badge?: string;
 }[] = [
   {
     level: 'PUBLIC',
@@ -43,10 +45,18 @@ const privacyOptions: {
     icon: EyeOff,
   },
   {
+    level: 'ZK_COMPRESSED',
+    title: 'ZK Compressed',
+    description: 'Light Protocol. Sender link broken.',
+    icon: Lock,
+    badge: 'Devnet',
+  },
+  {
     level: 'PRIVATE',
     title: 'Full Privacy',
     description: 'Stealth + Confidential (coming soon).',
     icon: Lock,
+    badge: 'Soon',
   },
 ];
 
@@ -54,6 +64,7 @@ const PRIVACY_LABELS: Record<PrivacyLevel, string> = {
   PUBLIC: 'Public',
   SEMI: 'Stealth',
   PRIVATE: 'Full Privacy',
+  ZK_COMPRESSED: 'ZK Compressed',
 };
 
 const MEMO_PROGRAM_ID = new SolanaPublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
@@ -119,7 +130,8 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
       return;
     }
 
-    const amountLamports = parseFloat(amount) * LAMPORTS_PER_SOL;
+    const amountSol = parseFloat(amount);
+    const amountLamports = amountSol * LAMPORTS_PER_SOL;
     if (isNaN(amountLamports) || amountLamports <= 0) {
       setError('Invalid amount');
       return;
@@ -129,6 +141,32 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
     setStatusMessage('Preparing transaction...');
 
     try {
+      // Handle ZK Compressed transfer via Light Protocol
+      if (selectedPrivacy === 'ZK_COMPRESSED') {
+        if (!recipientPublicAddress) {
+          throw new Error('Recipient address required for ZK transfer');
+        }
+
+        setStatusMessage('Compressing SOL via Light Protocol...');
+
+        const lightWallet: LightWallet = {
+          publicKey,
+          signTransaction: signTransaction as any,
+        };
+
+        const recipientPubkey = new SolanaPublicKey(recipientPublicAddress);
+        const result = await privateZKDonation(lightWallet, recipientPubkey, amountSol);
+
+        if (!result.success) {
+          throw new Error(result.error || 'ZK Compressed transfer failed');
+        }
+
+        setTxHash(result.signature!);
+        setStep('success');
+        triggerOffuscation();
+        return;
+      }
+
       let destinationPubkey: SolanaPublicKey;
       let memoInstruction: TransactionInstruction | null = null;
 
@@ -208,12 +246,12 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
   };
 
   const handleContinue = () => {
-    if (selectedPrivacy === 'PUBLIC') {
+    if (selectedPrivacy === 'PUBLIC' || selectedPrivacy === 'ZK_COMPRESSED') {
       if (!recipientPublicAddress) {
         setError('Please enter recipient address');
         return;
       }
-    } else {
+    } else if (selectedPrivacy === 'SEMI') {
       if (!stealthResult) {
         setError('Please enter a valid Stealth Meta Address');
         return;
@@ -251,7 +289,7 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
             {/* Privacy Level */}
             <div className="mb-6">
               <label className="text-[10px] text-white/25 uppercase tracking-wide mb-3 block">Privacy Level</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {privacyOptions.map((option) => (
                   <button
                     key={option.level}
@@ -261,17 +299,30 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
                       option.level === 'PRIVATE'
                         ? 'border-white/[0.04] opacity-50 cursor-not-allowed'
                         : selectedPrivacy === option.level
-                          ? 'border-white bg-white/[0.05]'
+                          ? option.level === 'ZK_COMPRESSED'
+                            ? 'border-purple-400 bg-purple-400/[0.05]'
+                            : 'border-white bg-white/[0.05]'
                           : 'border-white/[0.06] hover:border-white/[0.1]'
                     }`}
                   >
                     {selectedPrivacy === option.level && (
-                      <span className="absolute top-2 right-2 w-2 h-2 bg-green-400 rounded-full" />
+                      <span className={`absolute top-2 right-2 w-2 h-2 rounded-full ${
+                        option.level === 'ZK_COMPRESSED' ? 'bg-purple-400' : 'bg-green-400'
+                      }`} />
+                    )}
+                    {option.badge && (
+                      <span className={`absolute top-2 right-6 text-[8px] px-1.5 py-0.5 rounded ${
+                        option.level === 'ZK_COMPRESSED'
+                          ? 'bg-purple-400/10 text-purple-400'
+                          : 'bg-white/10 text-white/40'
+                      }`}>
+                        {option.badge}
+                      </span>
                     )}
                     <option.icon
                       className={`w-4 h-4 mb-2 ${
                         selectedPrivacy === option.level
-                          ? 'text-white'
+                          ? option.level === 'ZK_COMPRESSED' ? 'text-purple-400' : 'text-white'
                           : 'text-white/30'
                       }`}
                     />
@@ -283,7 +334,7 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
             </div>
 
             {/* Recipient */}
-            {selectedPrivacy === 'PUBLIC' ? (
+            {selectedPrivacy === 'PUBLIC' || selectedPrivacy === 'ZK_COMPRESSED' ? (
               <div className="mb-4">
                 <label className="text-[10px] text-white/25 uppercase tracking-wide mb-2 block">
                   Recipient Wallet Address
@@ -296,7 +347,7 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
                   className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 text-sm font-mono text-white placeholder-white/20 focus:outline-none focus:border-white/[0.1]"
                 />
               </div>
-            ) : (
+            ) : selectedPrivacy === 'SEMI' ? (
               <div className="mb-4">
                 <label className="text-[10px] text-white/25 uppercase tracking-wide mb-2 block">
                   Recipient Stealth Meta Address
@@ -308,6 +359,21 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
                   placeholder="st:ABC123...XYZ:DEF456...UVW"
                   className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 text-sm font-mono text-white placeholder-white/20 focus:outline-none focus:border-white/[0.1]"
                 />
+              </div>
+            ) : null}
+
+            {/* ZK Compressed Info */}
+            {selectedPrivacy === 'ZK_COMPRESSED' && (
+              <div className="mb-4 p-3 bg-purple-400/5 border border-purple-400/10 rounded-xl">
+                <div className="flex items-start gap-2">
+                  <Shield className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-purple-400 text-xs font-medium mb-1">Light Protocol ZK Compression</p>
+                    <p className="text-white/40 text-xs">
+                      Your SOL is compressed into a Merkle tree. The sender-receiver link is broken via ZK proofs.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -327,7 +393,7 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
             </div>
 
             {/* Generated Stealth Address */}
-            {selectedPrivacy !== 'PUBLIC' && stealthResult && (
+            {selectedPrivacy === 'SEMI' && stealthResult && (
               <div className="mb-6 p-4 bg-green-400/5 border border-green-400/10 rounded-xl">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-medium text-green-400">
@@ -402,10 +468,14 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
 
             <button
               onClick={handleContinue}
-              disabled={!publicKey || (selectedPrivacy !== 'PUBLIC' && !stealthResult)}
+              disabled={
+                !publicKey ||
+                ((selectedPrivacy === 'PUBLIC' || selectedPrivacy === 'ZK_COMPRESSED') && !recipientPublicAddress) ||
+                (selectedPrivacy === 'SEMI' && !stealthResult)
+              }
               className="w-full py-4 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98]"
             >
-              {!publicKey ? 'Connect Wallet First' : 'Send Payment'}
+              {!publicKey ? 'Connect Wallet First' : selectedPrivacy === 'ZK_COMPRESSED' ? 'Send ZK Payment' : 'Send Payment'}
               <ArrowRight className="w-4 h-4" />
             </button>
           </>

@@ -36,6 +36,7 @@ const privacyLabels: Record<PrivacyLevel, string> = {
   PUBLIC: 'Public Mode',
   SEMI: 'Semi Mode',
   PRIVATE: 'Private Mode',
+  ZK_COMPRESSED: 'ZK Compressed Mode',
 };
 
 function generateCampaignId(): string {
