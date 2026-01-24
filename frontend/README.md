@@ -1,36 +1,100 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Offuscate Frontend
 
-## Getting Started
+> Privacy-First Donations & Wallet Mixing on Solana
 
-First, run the development server:
+## Quick Start
 
 ```bash
+# Install dependencies
+npm install
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Open http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Private Donations (`/explore`)
+- Browse crowdfunding campaigns
+- Donate with privacy protection
+- **ZK Private** - Light Protocol ZK Compression (recommended)
+- **ShadowWire** - Bulletproofs ZK (maximum privacy)
+- **Public** - Standard transparent donation
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### ShadowMix (`/mixer`)
+- Personal wallet mixer
+- Two wallet system (Main + Stealth)
+- Deposit to privacy pool with standardized amounts
+- Withdraw to stealth wallet (untraceable)
+- Send payments with ZK or direct mode
 
-## Learn More
+### Campaign Management
+- `/launch` - Create new campaigns
+- `/dashboard` - Manage your campaigns and stealth keys
+- `/activity` - View transaction history
 
-To learn more about Next.js, take a look at the following resources:
+## Privacy Technology
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| 4 | Light Protocol ZK | Groth16 proofs, sender unlinkable |
+| 3 | Commitment System | Cryptographic unlinkability |
+| 2 | Relayer | Gas abstraction |
+| 1 | Privacy Pool | Fund mixing |
+| 0 | Stealth Addresses | One-time addresses |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Environment Variables
 
-## Deploy on Vercel
+```bash
+# .env.local
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Helius RPC (required for ZK Compression)
+NEXT_PUBLIC_RPC_URL=https://devnet.helius-rpc.com?api-key=YOUR_KEY
+NEXT_PUBLIC_HELIUS_API_KEY=YOUR_KEY
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Relayer (base58 encoded keypair)
+RELAYER_SECRET_KEY=<base58_encoded_secret>
+
+# Program ID
+NEXT_PUBLIC_PROGRAM_ID=5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
+```
+
+## Tech Stack
+
+- **Next.js 15** - React framework
+- **Tailwind CSS 4** - Styling
+- **Anchor** - Solana program client
+- **Light Protocol** - ZK Compression
+- **Solana Wallet Adapter** - Wallet connection
+
+## Project Structure
+
+```
+app/
+├── page.tsx              # Home
+├── explore/              # Campaigns browser
+├── mixer/                # ShadowMix
+├── launch/               # Create campaign
+├── dashboard/            # User dashboard
+├── components/
+│   ├── DonationModal     # Privacy donation selection
+│   ├── TraceSimulator    # Traceability test
+│   └── PrivacyFeedback   # Privacy analysis
+└── lib/
+    ├── program/          # Anchor client
+    ├── privacy/          # ZK & commitment system
+    └── stealth/          # Stealth addresses
+```
+
+## Build
+
+```bash
+npm run build
+npm start
+```
+
+---
+
+*Solana Privacy Hackathon 2025*
