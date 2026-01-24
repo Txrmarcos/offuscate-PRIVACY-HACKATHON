@@ -1,18 +1,45 @@
-import { BN } from '@coral-xyz/anchor';
+import { Program, AnchorProvider, BN, Idl } from '@coral-xyz/anchor';
 import {
   Connection,
   PublicKey,
   SystemProgram,
   LAMPORTS_PER_SOL,
-  TransactionInstruction,
+  Keypair,
 } from '@solana/web3.js';
-import bs58 from 'bs58';
+import idlJson from './idl/offuscate.json';
+import { getHeliusConnection, isHeliusConfigured } from '../helius';
 
 // Program ID from deployment
 export const PROGRAM_ID = new PublicKey('5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq');
 
-// Devnet connection
-export const DEVNET_RPC = 'https://api.devnet.solana.com';
+// Helius API Key for RPC
+const HELIUS_API_KEY = process.env.NEXT_PUBLIC_HELIUS_API_KEY || '';
+
+// Devnet connection - PRIORITIZES HELIUS RPC for enhanced features
+export const DEVNET_RPC = HELIUS_API_KEY
+  ? `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
+  : (process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com');
+
+/**
+ * Get connection instance - uses Helius if configured
+ * Helius RPC provides:
+ * - Enhanced transaction parsing
+ * - Priority fee estimation
+ * - Better reliability
+ */
+export function getConnection(): Connection {
+  if (isHeliusConfigured()) {
+    return getHeliusConnection();
+  }
+  return new Connection(DEVNET_RPC, 'confirmed');
+}
+
+// IDL type
+const idl = idlJson as Idl;
+
+// ============================================
+// TYPES
+// ============================================
 
 export interface CampaignData {
   owner: PublicKey;
@@ -27,17 +54,87 @@ export interface CampaignData {
   createdAt: number;
   vaultBump: number;
   campaignBump: number;
+  stealthMetaAddress: string;
+  stealthDonations: number;
+  stealthTotal: number;
 }
 
-// Instruction discriminators (first 8 bytes of sha256 hash of instruction name)
-const DISCRIMINATORS = {
-  createCampaign: Buffer.from([111, 131, 187, 98, 160, 193, 114, 244]),
-  donate: Buffer.from([121, 186, 218, 211, 73, 70, 196, 180]),
-  withdraw: Buffer.from([183, 18, 70, 156, 148, 109, 161, 34]),
-  closeCampaign: Buffer.from([65, 49, 110, 7, 63, 238, 206, 77]),
-};
+export interface StealthRegistryData {
+  campaign: PublicKey;
+  stealthAddress: PublicKey;
+  ephemeralPubKey: string;
+  amount: number;
+  timestamp: number;
+  bump: number;
+}
 
-// Get PDAs for a campaign
+// Privacy Pool types
+export interface PrivacyPoolData {
+  totalDeposited: number;
+  totalWithdrawn: number;
+  depositCount: number;
+  withdrawCount: number;
+  churnCount: number;
+  currentBalance: number;
+  bump: number;
+  vaultBump: number;
+}
+
+export interface ChurnVaultData {
+  index: number;
+  bump: number;
+  balance: number;
+}
+
+export interface PendingWithdrawData {
+  recipient: PublicKey;
+  amount: number;
+  requestedAt: number;
+  availableAt: number;
+  claimed: boolean;
+  bump: number;
+  timeRemaining: number; // Seconds until claimable
+  isReady: boolean;
+}
+
+// Allowed withdrawal amounts (must match Anchor program)
+export const ALLOWED_WITHDRAW_AMOUNTS = [0.1, 0.5, 1.0]; // SOL
+
+// Delay constants (variable delay: 30s - 5min)
+export const MIN_DELAY_SECONDS = 30;
+export const MAX_DELAY_SECONDS = 300;
+export const WITHDRAW_DELAY_SECONDS = MIN_DELAY_SECONDS; // Legacy - use variable delay
+
+// Churn vault count
+export const CHURN_VAULT_COUNT = 3;
+
+// ============================================
+// PROGRAM HELPERS
+// ============================================
+
+/**
+ * Create Anchor Program instance
+ */
+export function getProgram(provider: AnchorProvider): Program {
+  return new Program(idl, provider);
+}
+
+/**
+ * Create a read-only provider (no wallet needed)
+ */
+export function getReadOnlyProvider(connection: Connection): AnchorProvider {
+  // Dummy wallet for read-only operations
+  const dummyWallet = {
+    publicKey: Keypair.generate().publicKey,
+    signTransaction: async () => { throw new Error('Read-only'); },
+    signAllTransactions: async () => { throw new Error('Read-only'); },
+  };
+  return new AnchorProvider(connection, dummyWallet as any, {});
+}
+
+/**
+ * Get PDAs for a campaign
+ */
 export function getCampaignPDAs(campaignId: string) {
   const [campaignPda, campaignBump] = PublicKey.findProgramAddressSync(
     [Buffer.from('campaign'), Buffer.from(campaignId)],
@@ -52,127 +149,601 @@ export function getCampaignPDAs(campaignId: string) {
   return { campaignPda, vaultPda, campaignBump, vaultBump };
 }
 
-// Serialize string for Borsh (length-prefixed)
-function serializeString(str: string): Buffer {
-  const strBytes = Buffer.from(str, 'utf8');
-  const lenBuf = Buffer.alloc(4);
-  lenBuf.writeUInt32LE(strBytes.length, 0);
-  return Buffer.concat([lenBuf, strBytes]);
+/**
+ * Get PDA for stealth registry entry
+ */
+export function getStealthRegistryPDA(campaignPda: PublicKey, stealthAddress: PublicKey) {
+  const [registryPda, bump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('stealth'), campaignPda.toBuffer(), stealthAddress.toBuffer()],
+    PROGRAM_ID
+  );
+  return { registryPda, bump };
 }
 
-// Serialize u64 for Borsh
-function serializeU64(value: number | BN): Buffer {
-  const bn = typeof value === 'number' ? new BN(value) : value;
-  return bn.toArrayLike(Buffer, 'le', 8);
+/**
+ * Get PDAs for Privacy Pool
+ */
+export function getPrivacyPoolPDAs() {
+  const [poolPda, poolBump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('privacy_pool')],
+    PROGRAM_ID
+  );
+
+  const [poolVaultPda, vaultBump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('pool_vault')],
+    PROGRAM_ID
+  );
+
+  return { poolPda, poolVaultPda, poolBump, vaultBump };
 }
 
-// Serialize i64 for Borsh
-function serializeI64(value: number | BN): Buffer {
-  const bn = typeof value === 'number' ? new BN(value) : value;
-  return bn.toArrayLike(Buffer, 'le', 8);
+/**
+ * Get PDA for pending withdrawal
+ */
+export function getPendingWithdrawPDA(recipient: PublicKey) {
+  const [pendingPda, bump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('pending'), recipient.toBuffer()],
+    PROGRAM_ID
+  );
+  return { pendingPda, bump };
 }
 
-// Create campaign instruction
-export function createCampaignInstruction(
+/**
+ * Get PDAs for churn vault
+ */
+export function getChurnVaultPDAs(index: number) {
+  const indexBuffer = Buffer.from([index]);
+
+  const [churnStatePda, stateBump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('churn_state'), indexBuffer],
+    PROGRAM_ID
+  );
+
+  const [churnVaultPda, vaultBump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('churn_vault'), indexBuffer],
+    PROGRAM_ID
+  );
+
+  return { churnStatePda, churnVaultPda, stateBump, vaultBump };
+}
+
+// ============================================
+// CAMPAIGN OPERATIONS
+// ============================================
+
+/**
+ * Create a new campaign
+ */
+export async function createCampaign(
+  program: Program,
   owner: PublicKey,
   campaignId: string,
   title: string,
   description: string,
-  goalLamports: number | BN,
-  deadlineTimestamp: number | BN
-): TransactionInstruction {
+  goalSol: number,
+  deadlineTimestamp: number
+): Promise<string> {
   const { campaignPda, vaultPda } = getCampaignPDAs(campaignId);
+  const goalLamports = new BN(goalSol * LAMPORTS_PER_SOL);
 
-  const data = Buffer.concat([
-    DISCRIMINATORS.createCampaign,
-    serializeString(campaignId),
-    serializeString(title),
-    serializeString(description),
-    serializeU64(goalLamports),
-    serializeI64(deadlineTimestamp),
-  ]);
+  const signature = await program.methods
+    .createCampaign(campaignId, title, description, goalLamports, new BN(deadlineTimestamp))
+    .accounts({
+      owner,
+      campaign: campaignPda,
+      vault: vaultPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
 
-  return new TransactionInstruction({
-    keys: [
-      { pubkey: owner, isSigner: true, isWritable: true },
-      { pubkey: campaignPda, isSigner: false, isWritable: true },
-      { pubkey: vaultPda, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    programId: PROGRAM_ID,
-    data,
-  });
+  return signature;
 }
 
-// Donate instruction
-export function donateInstruction(
+/**
+ * Donate to a campaign (regular - goes to vault)
+ */
+export async function donate(
+  program: Program,
   donor: PublicKey,
   campaignId: string,
-  amountLamports: number | BN
-): TransactionInstruction {
+  amountSol: number
+): Promise<string> {
   const { campaignPda, vaultPda } = getCampaignPDAs(campaignId);
+  const amountLamports = new BN(amountSol * LAMPORTS_PER_SOL);
 
-  const data = Buffer.concat([
-    DISCRIMINATORS.donate,
-    serializeU64(amountLamports),
-  ]);
+  const signature = await program.methods
+    .donate(amountLamports)
+    .accounts({
+      donor,
+      campaign: campaignPda,
+      vault: vaultPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
 
-  return new TransactionInstruction({
-    keys: [
-      { pubkey: donor, isSigner: true, isWritable: true },
-      { pubkey: campaignPda, isSigner: false, isWritable: true },
-      { pubkey: vaultPda, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    programId: PROGRAM_ID,
-    data,
-  });
+  return signature;
 }
 
-// Withdraw instruction
-export function withdrawInstruction(
+/**
+ * Withdraw from campaign vault
+ */
+export async function withdraw(
+  program: Program,
   owner: PublicKey,
   campaignId: string,
-  amountLamports: number | BN
-): TransactionInstruction {
+  amountSol: number
+): Promise<string> {
   const { campaignPda, vaultPda } = getCampaignPDAs(campaignId);
+  const amountLamports = new BN(amountSol * LAMPORTS_PER_SOL);
 
-  const data = Buffer.concat([
-    DISCRIMINATORS.withdraw,
-    serializeU64(amountLamports),
-  ]);
+  const signature = await program.methods
+    .withdraw(amountLamports)
+    .accounts({
+      owner,
+      campaign: campaignPda,
+      vault: vaultPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
 
-  return new TransactionInstruction({
-    keys: [
-      { pubkey: owner, isSigner: true, isWritable: true },
-      { pubkey: campaignPda, isSigner: false, isWritable: false },
-      { pubkey: vaultPda, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    programId: PROGRAM_ID,
-    data,
-  });
+  return signature;
 }
 
-// Close campaign instruction
-export function closeCampaignInstruction(
+/**
+ * Close a campaign
+ */
+export async function closeCampaign(
+  program: Program,
   owner: PublicKey,
   campaignId: string
-): TransactionInstruction {
+): Promise<string> {
   const { campaignPda } = getCampaignPDAs(campaignId);
 
-  return new TransactionInstruction({
-    keys: [
-      { pubkey: owner, isSigner: true, isWritable: true },
-      { pubkey: campaignPda, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    programId: PROGRAM_ID,
-    data: DISCRIMINATORS.closeCampaign,
-  });
+  const signature = await program.methods
+    .closeCampaign()
+    .accounts({
+      owner,
+      campaign: campaignPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
 }
 
-// Fetch vault balance
+// ============================================
+// STEALTH OPERATIONS
+// ============================================
+
+/**
+ * Set stealth meta-address for a campaign
+ */
+export async function setStealthMetaAddress(
+  program: Program,
+  owner: PublicKey,
+  campaignId: string,
+  stealthMetaAddress: string
+): Promise<string> {
+  const { campaignPda } = getCampaignPDAs(campaignId);
+
+  const signature = await program.methods
+    .setStealthMetaAddress(stealthMetaAddress)
+    .accounts({
+      owner,
+      campaign: campaignPda,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Register a stealth payment (metadata only)
+ * The actual SOL transfer happens separately via SystemProgram
+ */
+export async function registerStealthPayment(
+  program: Program,
+  donor: PublicKey,
+  campaignId: string,
+  stealthAddress: PublicKey,
+  ephemeralPubKey: string,
+  amountSol: number
+): Promise<string> {
+  const { campaignPda } = getCampaignPDAs(campaignId);
+  const { registryPda } = getStealthRegistryPDA(campaignPda, stealthAddress);
+  const amountLamports = new BN(amountSol * LAMPORTS_PER_SOL);
+
+  const signature = await program.methods
+    .registerStealthPayment(stealthAddress, ephemeralPubKey, amountLamports)
+    .accounts({
+      donor,
+      campaign: campaignPda,
+      registry: registryPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+// ============================================
+// PRIVACY POOL OPERATIONS
+// ============================================
+
+/**
+ * Initialize the global privacy pool (called once)
+ */
+export async function initPrivacyPool(
+  program: Program,
+  authority: PublicKey
+): Promise<string> {
+  const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+
+  const signature = await program.methods
+    .initPrivacyPool()
+    .accounts({
+      authority,
+      pool: poolPda,
+      poolVault: poolVaultPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Deposit SOL into the privacy pool
+ * PRIVACY: No tracking of sender, receiver, or campaign
+ */
+export async function poolDeposit(
+  program: Program,
+  depositor: PublicKey,
+  amountSol: number
+): Promise<string> {
+  const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+  const amountLamports = new BN(amountSol * LAMPORTS_PER_SOL);
+
+  const signature = await program.methods
+    .poolDeposit(amountLamports)
+    .accounts({
+      depositor,
+      pool: poolPda,
+      poolVault: poolVaultPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Request a withdrawal from the privacy pool
+ * Amount must be one of: 0.1, 0.5, or 1.0 SOL
+ * Creates a pending withdrawal with delay
+ */
+export async function requestWithdraw(
+  program: Program,
+  recipient: PublicKey,
+  amountSol: number
+): Promise<string> {
+  // Validate amount is allowed
+  if (!ALLOWED_WITHDRAW_AMOUNTS.includes(amountSol)) {
+    throw new Error(`Invalid amount. Must be one of: ${ALLOWED_WITHDRAW_AMOUNTS.join(', ')} SOL`);
+  }
+
+  const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+  const { pendingPda } = getPendingWithdrawPDA(recipient);
+  const amountLamports = new BN(amountSol * LAMPORTS_PER_SOL);
+
+  const signature = await program.methods
+    .requestWithdraw(amountLamports)
+    .accounts({
+      recipient,
+      pool: poolPda,
+      poolVault: poolVaultPda,
+      pendingWithdraw: pendingPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Claim a pending withdrawal after delay has passed
+ * Must be signed by the recipient (stealth keypair)
+ */
+export async function claimWithdraw(
+  program: Program,
+  recipient: PublicKey
+): Promise<string> {
+  const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+  const { pendingPda } = getPendingWithdrawPDA(recipient);
+
+  const signature = await program.methods
+    .claimWithdraw()
+    .accounts({
+      recipient,
+      pool: poolPda,
+      poolVault: poolVaultPda,
+      pendingWithdraw: pendingPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Fetch privacy pool stats
+ */
+export async function fetchPoolStats(
+  program: Program,
+  connection: Connection
+): Promise<PrivacyPoolData | null> {
+  const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+
+  try {
+    const account = await (program.account as any).privacyPool.fetch(poolPda);
+    const vaultBalance = await connection.getBalance(poolVaultPda);
+
+    return {
+      totalDeposited: account.totalDeposited.toNumber() / LAMPORTS_PER_SOL,
+      totalWithdrawn: account.totalWithdrawn.toNumber() / LAMPORTS_PER_SOL,
+      depositCount: account.depositCount.toNumber(),
+      withdrawCount: account.withdrawCount.toNumber(),
+      churnCount: account.churnCount?.toNumber?.() ?? 0,
+      currentBalance: vaultBalance / LAMPORTS_PER_SOL,
+      bump: account.bump,
+      vaultBump: account.vaultBump,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch pending withdrawal for a recipient
+ */
+export async function fetchPendingWithdraw(
+  program: Program,
+  recipient: PublicKey
+): Promise<PendingWithdrawData | null> {
+  const { pendingPda } = getPendingWithdrawPDA(recipient);
+
+  try {
+    const account = await (program.account as any).pendingWithdraw.fetch(pendingPda);
+    const now = Math.floor(Date.now() / 1000);
+    const availableAt = account.availableAt.toNumber();
+    const timeRemaining = Math.max(0, availableAt - now);
+
+    return {
+      recipient: account.recipient,
+      amount: account.amount.toNumber() / LAMPORTS_PER_SOL,
+      requestedAt: account.requestedAt.toNumber(),
+      availableAt,
+      claimed: account.claimed,
+      bump: account.bump,
+      timeRemaining,
+      isReady: timeRemaining === 0 && !account.claimed,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if privacy pool is initialized
+ */
+export async function isPoolInitialized(program: Program): Promise<boolean> {
+  const stats = await fetchPoolStats(program, program.provider.connection);
+  return stats !== null;
+}
+
+// ============================================
+// POOL CHURN OPERATIONS
+// ============================================
+
+/**
+ * Initialize a churn vault (called once per vault index 0-2)
+ */
+export async function initChurnVault(
+  program: Program,
+  authority: PublicKey,
+  index: number
+): Promise<string> {
+  const { poolPda } = getPrivacyPoolPDAs();
+  const { churnStatePda, churnVaultPda } = getChurnVaultPDAs(index);
+
+  const signature = await program.methods
+    .initChurnVault(index)
+    .accounts({
+      authority,
+      pool: poolPda,
+      churnVaultState: churnStatePda,
+      churnVault: churnVaultPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Pool Churn - Move funds to internal churn vault (breaks graph heuristics)
+ */
+export async function poolChurn(
+  program: Program,
+  authority: PublicKey,
+  index: number,
+  amountSol: number
+): Promise<string> {
+  const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+  const { churnStatePda, churnVaultPda } = getChurnVaultPDAs(index);
+  const amountLamports = new BN(amountSol * LAMPORTS_PER_SOL);
+
+  const signature = await program.methods
+    .poolChurn(amountLamports)
+    .accounts({
+      authority,
+      pool: poolPda,
+      poolVault: poolVaultPda,
+      churnVaultState: churnStatePda,
+      churnVault: churnVaultPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Pool Unchurn - Return funds from churn vault to main pool
+ */
+export async function poolUnchurn(
+  program: Program,
+  authority: PublicKey,
+  index: number,
+  amountSol: number
+): Promise<string> {
+  const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+  const { churnStatePda, churnVaultPda } = getChurnVaultPDAs(index);
+  const amountLamports = new BN(amountSol * LAMPORTS_PER_SOL);
+
+  const signature = await program.methods
+    .poolUnchurn(amountLamports)
+    .accounts({
+      authority,
+      pool: poolPda,
+      poolVault: poolVaultPda,
+      churnVaultState: churnStatePda,
+      churnVault: churnVaultPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * BATCH CLAIM WITHDRAWALS
+ *
+ * PRIVACY FEATURE: Processes multiple pending withdrawals in a single transaction.
+ * This breaks the visual pattern of "1 withdraw = 1 tx" that analysts use for correlation.
+ *
+ * @param program - Anchor program instance
+ * @param authority - Signer who authorizes the batch claim
+ * @param recipients - Array of recipient keypairs (stealth addresses) with pending withdrawals
+ * @returns Transaction signature
+ */
+export async function batchClaimWithdraw(
+  program: Program,
+  authority: PublicKey,
+  recipients: Keypair[]
+): Promise<string> {
+  if (recipients.length === 0) {
+    throw new Error('No recipients provided for batch claim');
+  }
+  if (recipients.length > 5) {
+    throw new Error('Maximum 5 withdrawals per batch');
+  }
+
+  const { poolPda, poolVaultPda } = getPrivacyPoolPDAs();
+
+  // Build remaining accounts array: pairs of (pending_pda, recipient)
+  const remainingAccounts: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] = [];
+
+  for (const recipient of recipients) {
+    const { pendingPda } = getPendingWithdrawPDA(recipient.publicKey);
+
+    // Add pending withdraw PDA (writable, not signer)
+    remainingAccounts.push({
+      pubkey: pendingPda,
+      isSigner: false,
+      isWritable: true,
+    });
+
+    // Add recipient (writable to receive SOL, signer for verification)
+    remainingAccounts.push({
+      pubkey: recipient.publicKey,
+      isSigner: false, // Authority signs, not individual recipients
+      isWritable: true,
+    });
+  }
+
+  const signature = await program.methods
+    .batchClaimWithdraw()
+    .accounts({
+      authority,
+      pool: poolPda,
+      poolVault: poolVaultPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .remainingAccounts(remainingAccounts)
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Fetch all pending withdrawals that are ready to claim
+ * Useful for batch operations
+ */
+export async function fetchReadyWithdrawals(
+  program: Program,
+): Promise<{ recipient: PublicKey; pendingPda: PublicKey; amount: number }[]> {
+  try {
+    const accounts = await (program.account as any).pendingWithdraw.all();
+    const now = Math.floor(Date.now() / 1000);
+
+    return accounts
+      .filter(({ account }: any) => {
+        const availableAt = account.availableAt.toNumber();
+        return !account.claimed && now >= availableAt;
+      })
+      .map(({ publicKey, account }: any) => ({
+        recipient: account.recipient,
+        pendingPda: publicKey,
+        amount: account.amount.toNumber() / LAMPORTS_PER_SOL,
+      }));
+  } catch (e) {
+    console.error('Failed to fetch ready withdrawals:', e);
+    return [];
+  }
+}
+
+/**
+ * Fetch churn vault state
+ */
+export async function fetchChurnVault(
+  program: Program,
+  connection: Connection,
+  index: number
+): Promise<ChurnVaultData | null> {
+  const { churnStatePda, churnVaultPda } = getChurnVaultPDAs(index);
+
+  try {
+    const account = await (program.account as any).churnVaultState.fetch(churnStatePda);
+    const balance = await connection.getBalance(churnVaultPda);
+
+    return {
+      index: account.index,
+      bump: account.bump,
+      balance: balance / LAMPORTS_PER_SOL,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ============================================
+// FETCH OPERATIONS
+// ============================================
+
+/**
+ * Fetch vault balance
+ */
 export async function fetchVaultBalance(
   connection: Connection,
   campaignId: string
@@ -182,139 +753,106 @@ export async function fetchVaultBalance(
   return balance / LAMPORTS_PER_SOL;
 }
 
-// Account discriminator for Campaign (first 8 bytes)
-const CAMPAIGN_DISCRIMINATOR = Buffer.from([50, 40, 49, 11, 157, 220, 229, 192]);
-
-// Deserialize campaign data from account
-export function deserializeCampaign(data: Buffer): CampaignData | null {
-  try {
-    // Check discriminator
-    if (!data.slice(0, 8).equals(CAMPAIGN_DISCRIMINATOR)) {
-      return null;
-    }
-
-    let offset = 8;
-
-    // Owner (32 bytes)
-    const owner = new PublicKey(data.slice(offset, offset + 32));
-    offset += 32;
-
-    // Campaign ID (string)
-    const campaignIdLen = data.readUInt32LE(offset);
-    offset += 4;
-    const campaignId = data.slice(offset, offset + campaignIdLen).toString('utf8');
-    offset += campaignIdLen;
-
-    // Title (string)
-    const titleLen = data.readUInt32LE(offset);
-    offset += 4;
-    const title = data.slice(offset, offset + titleLen).toString('utf8');
-    offset += titleLen;
-
-    // Description (string)
-    const descLen = data.readUInt32LE(offset);
-    offset += 4;
-    const description = data.slice(offset, offset + descLen).toString('utf8');
-    offset += descLen;
-
-    // Goal (u64)
-    const goal = Number(new BN(data.slice(offset, offset + 8), 'le'));
-    offset += 8;
-
-    // Total raised (u64)
-    const totalRaised = Number(new BN(data.slice(offset, offset + 8), 'le'));
-    offset += 8;
-
-    // Donor count (u64)
-    const donorCount = Number(new BN(data.slice(offset, offset + 8), 'le'));
-    offset += 8;
-
-    // Deadline (i64)
-    const deadline = Number(new BN(data.slice(offset, offset + 8), 'le'));
-    offset += 8;
-
-    // Status (enum, 1 byte)
-    const statusByte = data[offset];
-    const status = statusByte === 0 ? 'Active' : statusByte === 1 ? 'Closed' : 'Completed';
-    offset += 1;
-
-    // Created at (i64)
-    const createdAt = Number(new BN(data.slice(offset, offset + 8), 'le'));
-    offset += 8;
-
-    // Vault bump (u8)
-    const vaultBump = data[offset];
-    offset += 1;
-
-    // Campaign bump (u8)
-    const campaignBump = data[offset];
-
-    return {
-      owner,
-      campaignId,
-      title,
-      description,
-      goal: goal / LAMPORTS_PER_SOL,
-      totalRaised: totalRaised / LAMPORTS_PER_SOL,
-      donorCount,
-      deadline,
-      status,
-      createdAt,
-      vaultBump,
-      campaignBump,
-    };
-  } catch (e) {
-    console.error('Failed to deserialize campaign:', e);
-    return null;
-  }
-}
-
-// Fetch campaign data
+/**
+ * Fetch a single campaign
+ */
 export async function fetchCampaign(
-  connection: Connection,
+  program: Program,
   campaignId: string
 ): Promise<CampaignData | null> {
   const { campaignPda } = getCampaignPDAs(campaignId);
 
   try {
-    const accountInfo = await connection.getAccountInfo(campaignPda);
-    if (!accountInfo) return null;
-
-    return deserializeCampaign(Buffer.from(accountInfo.data));
+    const account = await (program.account as any).campaign.fetch(campaignPda);
+    return parseCampaignAccount(account);
   } catch {
     return null;
   }
 }
 
-// List all campaigns
+/**
+ * List all campaigns
+ */
 export async function listCampaigns(
-  connection: Connection
+  program: Program
 ): Promise<{ pubkey: PublicKey; account: CampaignData }[]> {
   try {
-    // Use bs58 encoding for the discriminator filter
-    const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
-      filters: [
-        {
-          memcmp: {
-            offset: 0,
-            bytes: bs58.encode(CAMPAIGN_DISCRIMINATOR),
-          },
-        },
-      ],
-    });
+    const accounts = await (program.account as any).campaign.all();
 
-    const campaigns: { pubkey: PublicKey; account: CampaignData }[] = [];
-
-    for (const { pubkey, account } of accounts) {
-      const data = deserializeCampaign(Buffer.from(account.data));
-      if (data) {
-        campaigns.push({ pubkey, account: data });
-      }
-    }
-
-    return campaigns;
+    return accounts.map(({ publicKey, account }: any) => ({
+      pubkey: publicKey,
+      account: parseCampaignAccount(account),
+    }));
   } catch (e) {
     console.error('Failed to list campaigns:', e);
     return [];
   }
+}
+
+/**
+ * Fetch stealth registries for a campaign
+ */
+export async function fetchStealthRegistries(
+  program: Program,
+  campaignPda: PublicKey
+): Promise<StealthRegistryData[]> {
+  try {
+    const accounts = await (program.account as any).stealthRegistry.all([
+      {
+        memcmp: {
+          offset: 8, // After discriminator
+          bytes: campaignPda.toBase58(),
+        },
+      },
+    ]);
+
+    return accounts.map(({ account }: any) => parseStealthRegistryAccount(account));
+  } catch (e) {
+    console.error('Failed to fetch stealth registries:', e);
+    return [];
+  }
+}
+
+// ============================================
+// ACCOUNT PARSERS
+// ============================================
+
+function parseCampaignAccount(account: any): CampaignData {
+  const statusMap: Record<string, 'Active' | 'Closed' | 'Completed'> = {
+    active: 'Active',
+    closed: 'Closed',
+    completed: 'Completed',
+  };
+
+  // Get status key (Anchor returns { active: {} } format)
+  const statusKey = Object.keys(account.status)[0];
+
+  return {
+    owner: account.owner,
+    campaignId: account.campaignId,
+    title: account.title,
+    description: account.description,
+    goal: account.goal.toNumber() / LAMPORTS_PER_SOL,
+    totalRaised: account.totalRaised.toNumber() / LAMPORTS_PER_SOL,
+    donorCount: account.donorCount.toNumber(),
+    deadline: account.deadline.toNumber(),
+    status: statusMap[statusKey] || 'Active',
+    createdAt: account.createdAt.toNumber(),
+    vaultBump: account.vaultBump,
+    campaignBump: account.campaignBump,
+    stealthMetaAddress: account.stealthMetaAddress,
+    stealthDonations: account.stealthDonations.toNumber(),
+    stealthTotal: account.stealthTotal.toNumber() / LAMPORTS_PER_SOL,
+  };
+}
+
+function parseStealthRegistryAccount(account: any): StealthRegistryData {
+  return {
+    campaign: account.campaign,
+    stealthAddress: account.stealthAddress,
+    ephemeralPubKey: account.ephemeralPubKey,
+    amount: account.amount.toNumber() / LAMPORTS_PER_SOL,
+    timestamp: account.timestamp.toNumber(),
+    bump: account.bump,
+  };
 }

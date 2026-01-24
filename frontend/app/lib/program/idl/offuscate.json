@@ -1,0 +1,1984 @@
+{
+  "address": "5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq",
+  "metadata": {
+    "name": "offuscate",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "batch_claim_withdraw",
+      "docs": [
+        "BATCH CLAIM WITHDRAWALS",
+        "",
+        "PRIVACY FEATURE: Processes multiple pending withdrawals in a single transaction.",
+        "This breaks the visual pattern of \"1 withdraw = 1 tx\" that analysts use for correlation.",
+        "",
+        "remaining_accounts: pairs of [recipient_account, pending_withdraw_pda] for each withdrawal",
+        "Max 5 withdrawals per batch to stay within compute limits."
+      ],
+      "discriminator": [
+        110,
+        48,
+        27,
+        157,
+        224,
+        116,
+        14,
+        152
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_withdraw",
+      "docs": [
+        "Claim a pending withdrawal after the delay has passed",
+        "",
+        "PRIVACY: The recipient (stealth address) signs to claim.",
+        "Observers cannot link this to the original deposit."
+      ],
+      "discriminator": [
+        232,
+        89,
+        154,
+        117,
+        16,
+        204,
+        182,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "recipient",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pending_withdraw",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  110,
+                  100,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "recipient"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_withdraw_relayed",
+      "docs": [
+        "Claim a pending withdrawal via RELAYER (gasless for recipient)",
+        "",
+        "PRIVACY FEATURE: The recipient does NOT pay gas and does NOT appear as tx signer.",
+        "Instead, a relayer submits the transaction and pays fees.",
+        "The recipient proves ownership by signing a message off-chain (ed25519).",
+        "",
+        "Flow:",
+        "1. Recipient signs message: \"claim:{pending_pda}\" with stealth keypair",
+        "2. Relayer creates ed25519 verify instruction + this instruction",
+        "3. Relayer submits tx and pays gas",
+        "4. Funds go to stealth address without it being fee payer",
+        "",
+        "This breaks: stealth_address -> fee payer link"
+      ],
+      "discriminator": [
+        141,
+        26,
+        13,
+        242,
+        114,
+        55,
+        33,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "relayer",
+          "docs": [
+            "Relayer pays gas (any wallet can be relayer)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "recipient",
+          "docs": [
+            "Ownership is proven via ed25519 signature in previous instruction"
+          ],
+          "writable": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pending_withdraw",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  110,
+                  100,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pending_withdraw.recipient",
+                "account": "PendingWithdraw"
+              }
+            ]
+          }
+        },
+        {
+          "name": "instructions_sysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_campaign",
+      "docs": [
+        "Close a campaign (only owner)"
+      ],
+      "discriminator": [
+        65,
+        49,
+        110,
+        7,
+        63,
+        238,
+        206,
+        77
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "campaign"
+          ]
+        },
+        {
+          "name": "campaign",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  109,
+                  112,
+                  97,
+                  105,
+                  103,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign.campaign_id",
+                "account": "Campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_campaign",
+      "docs": [
+        "Create a new campaign with a vault PDA",
+        "The vault is controlled by the program, not the owner"
+      ],
+      "discriminator": [
+        111,
+        131,
+        187,
+        98,
+        160,
+        193,
+        114,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "campaign",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  109,
+                  112,
+                  97,
+                  105,
+                  103,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "campaign_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "campaign_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_id",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "goal",
+          "type": "u64"
+        },
+        {
+          "name": "deadline",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "donate",
+      "docs": [
+        "Donate to a campaign",
+        "Funds go to the vault PDA, not the owner",
+        "The donor can use a stealth address as the source"
+      ],
+      "discriminator": [
+        121,
+        186,
+        218,
+        211,
+        73,
+        70,
+        196,
+        180
+      ],
+      "accounts": [
+        {
+          "name": "donor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "campaign",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  109,
+                  112,
+                  97,
+                  105,
+                  103,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign.campaign_id",
+                "account": "Campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign.campaign_id",
+                "account": "Campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "get_pool_stats",
+      "docs": [
+        "Get pool stats (view function for frontend)"
+      ],
+      "discriminator": [
+        119,
+        221,
+        164,
+        30,
+        10,
+        6,
+        255,
+        128
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_churn_vault",
+      "docs": [
+        "Initialize a churn vault (call once per vault: 0, 1, 2)",
+        "",
+        "PRIVACY FEATURE: Churn vaults enable internal micro-movements that",
+        "break graph heuristics used by blockchain analysts."
+      ],
+      "discriminator": [
+        133,
+        111,
+        217,
+        28,
+        20,
+        159,
+        236,
+        173
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "churn_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  117,
+                  114,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "vault_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "churn_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  117,
+                  114,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "vault_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "vault_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "init_privacy_pool",
+      "docs": [
+        "Initialize the global privacy pool",
+        "Called once to create the pool PDA"
+      ],
+      "discriminator": [
+        108,
+        181,
+        246,
+        189,
+        130,
+        203,
+        36,
+        209
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "pool_churn",
+      "docs": [
+        "Pool Churn - Move funds from main pool to churn vault",
+        "",
+        "PRIVACY: Creates internal transactions that look like real activity.",
+        "Breaks the pattern: deposit → (delay) → withdraw",
+        "Into: deposit → churn → unchurn → (delay) → withdraw"
+      ],
+      "discriminator": [
+        199,
+        230,
+        143,
+        4,
+        207,
+        19,
+        192,
+        249
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "churn_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  117,
+                  114,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "churn_state.vault_index",
+                "account": "ChurnVaultState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "churn_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  117,
+                  114,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "churn_state.vault_index",
+                "account": "ChurnVaultState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "pool_deposit",
+      "docs": [
+        "Deposit SOL into the privacy pool",
+        "",
+        "PRIVACY: This instruction intentionally does NOT track:",
+        "- Who deposited (sender)",
+        "- Who will receive (receiver)",
+        "- Which campaign (if any)",
+        "- The individual deposit (only aggregate stats)",
+        "",
+        "This breaks the link between donor and recipient."
+      ],
+      "discriminator": [
+        26,
+        109,
+        164,
+        79,
+        207,
+        145,
+        204,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "depositor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "pool_unchurn",
+      "docs": [
+        "Pool Unchurn - Return funds from churn vault to main pool",
+        "",
+        "PRIVACY: Second step of churn - returns funds, adding noise to the graph."
+      ],
+      "discriminator": [
+        41,
+        228,
+        57,
+        124,
+        86,
+        30,
+        192,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "churn_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  117,
+                  114,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "churn_state.vault_index",
+                "account": "ChurnVaultState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "churn_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  117,
+                  114,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "churn_state.vault_index",
+                "account": "ChurnVaultState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "register_stealth_payment",
+      "docs": [
+        "Register a stealth payment (metadata only, NO SOL transfer)",
+        "This helps the recipient scan for their payments",
+        "The actual SOL goes directly to the stealth address via SystemProgram"
+      ],
+      "discriminator": [
+        111,
+        87,
+        72,
+        226,
+        219,
+        65,
+        222,
+        131
+      ],
+      "accounts": [
+        {
+          "name": "donor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "campaign",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  109,
+                  112,
+                  97,
+                  105,
+                  103,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign.campaign_id",
+                "account": "Campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  101,
+                  97,
+                  108,
+                  116,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "arg",
+                "path": "stealth_address"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "stealth_address",
+          "type": "pubkey"
+        },
+        {
+          "name": "ephemeral_pub_key",
+          "type": "string"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "request_withdraw",
+      "docs": [
+        "Request a withdrawal from the privacy pool",
+        "",
+        "Creates a pending withdrawal with a VARIABLE time delay (30s - 5min).",
+        "The amount must be one of the standardized amounts.",
+        "",
+        "PRIVACY: Only the stealth_address is recorded (not who requested).",
+        "The variable delay prevents timing correlation attacks."
+      ],
+      "discriminator": [
+        137,
+        95,
+        187,
+        96,
+        250,
+        138,
+        31,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for account rent (the connected wallet)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "recipient",
+          "docs": [
+            "The recipient (stealth address keypair - signs to prove ownership)"
+          ],
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  99,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pending_withdraw",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  110,
+                  100,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "recipient"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_stealth_meta_address",
+      "docs": [
+        "Set stealth meta-address for a campaign",
+        "This allows donors to generate stealth addresses for private donations"
+      ],
+      "discriminator": [
+        181,
+        193,
+        83,
+        145,
+        180,
+        176,
+        248,
+        39
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "campaign"
+          ]
+        },
+        {
+          "name": "campaign",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  109,
+                  112,
+                  97,
+                  105,
+                  103,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign.campaign_id",
+                "account": "Campaign"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "stealth_meta_address",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "Withdraw funds from campaign vault",
+        "Only the owner can withdraw"
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "campaign"
+          ]
+        },
+        {
+          "name": "campaign",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  109,
+                  112,
+                  97,
+                  105,
+                  103,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign.campaign_id",
+                "account": "Campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign.campaign_id",
+                "account": "Campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Campaign",
+      "discriminator": [
+        50,
+        40,
+        49,
+        11,
+        157,
+        220,
+        229,
+        192
+      ]
+    },
+    {
+      "name": "ChurnVaultState",
+      "discriminator": [
+        237,
+        225,
+        217,
+        210,
+        118,
+        214,
+        92,
+        218
+      ]
+    },
+    {
+      "name": "PendingWithdraw",
+      "discriminator": [
+        215,
+        125,
+        62,
+        82,
+        12,
+        143,
+        112,
+        133
+      ]
+    },
+    {
+      "name": "PrivacyPool",
+      "discriminator": [
+        133,
+        184,
+        191,
+        79,
+        252,
+        142,
+        190,
+        150
+      ]
+    },
+    {
+      "name": "StealthRegistry",
+      "discriminator": [
+        118,
+        226,
+        153,
+        61,
+        42,
+        197,
+        54,
+        238
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "CampaignIdTooLong",
+      "msg": "Campaign ID too long (max 32 chars)"
+    },
+    {
+      "code": 6001,
+      "name": "TitleTooLong",
+      "msg": "Title too long (max 64 chars)"
+    },
+    {
+      "code": 6002,
+      "name": "DescriptionTooLong",
+      "msg": "Description too long (max 256 chars)"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidGoal",
+      "msg": "Invalid goal amount"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidDeadline",
+      "msg": "Invalid deadline"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidAmount",
+      "msg": "Invalid amount"
+    },
+    {
+      "code": 6006,
+      "name": "CampaignNotActive",
+      "msg": "Campaign is not active"
+    },
+    {
+      "code": 6007,
+      "name": "CampaignEnded",
+      "msg": "Campaign has ended"
+    },
+    {
+      "code": 6008,
+      "name": "CampaignNotEnded",
+      "msg": "Campaign has not ended yet"
+    },
+    {
+      "code": 6009,
+      "name": "Unauthorized",
+      "msg": "Unauthorized"
+    },
+    {
+      "code": 6010,
+      "name": "InsufficientFunds",
+      "msg": "Insufficient funds in vault"
+    },
+    {
+      "code": 6011,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6012,
+      "name": "MetaAddressTooLong",
+      "msg": "Stealth meta-address too long (max 200 chars)"
+    },
+    {
+      "code": 6013,
+      "name": "EphemeralKeyTooLong",
+      "msg": "Ephemeral public key too long (max 64 chars)"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidWithdrawAmount",
+      "msg": "Invalid withdrawal amount. Must be 0.1, 0.5, or 1 SOL"
+    },
+    {
+      "code": 6015,
+      "name": "InsufficientPoolFunds",
+      "msg": "Insufficient funds in privacy pool"
+    },
+    {
+      "code": 6016,
+      "name": "WithdrawNotReady",
+      "msg": "Withdrawal not ready yet. Please wait for delay period"
+    },
+    {
+      "code": 6017,
+      "name": "AlreadyClaimed",
+      "msg": "Withdrawal already claimed"
+    },
+    {
+      "code": 6018,
+      "name": "BatchTooSmall",
+      "msg": "Batch too small - need at least 1 withdrawal (2 accounts)"
+    },
+    {
+      "code": 6019,
+      "name": "BatchInvalidPairs",
+      "msg": "Batch accounts must be pairs (recipient + pending)"
+    },
+    {
+      "code": 6020,
+      "name": "BatchTooLarge",
+      "msg": "Batch too large - max 5 withdrawals (10 accounts)"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidChurnIndex",
+      "msg": "Invalid churn vault index (must be 0, 1, or 2)"
+    },
+    {
+      "code": 6022,
+      "name": "InsufficientChurnFunds",
+      "msg": "Insufficient funds in churn vault"
+    },
+    {
+      "code": 6023,
+      "name": "InvalidSignatureInstruction",
+      "msg": "Invalid ed25519 signature instruction"
+    },
+    {
+      "code": 6024,
+      "name": "SignerMismatch",
+      "msg": "Signer does not match pending withdrawal recipient"
+    },
+    {
+      "code": 6025,
+      "name": "InvalidClaimMessage",
+      "msg": "Invalid claim message format (expected 'claim:<pda>')"
+    }
+  ],
+  "types": [
+    {
+      "name": "Campaign",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "campaign_id",
+            "type": "string"
+          },
+          {
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "name": "description",
+            "type": "string"
+          },
+          {
+            "name": "goal",
+            "type": "u64"
+          },
+          {
+            "name": "total_raised",
+            "type": "u64"
+          },
+          {
+            "name": "donor_count",
+            "type": "u64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "CampaignStatus"
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          },
+          {
+            "name": "campaign_bump",
+            "type": "u8"
+          },
+          {
+            "name": "stealth_meta_address",
+            "type": "string"
+          },
+          {
+            "name": "stealth_donations",
+            "type": "u64"
+          },
+          {
+            "name": "stealth_total",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CampaignStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Active"
+          },
+          {
+            "name": "Closed"
+          },
+          {
+            "name": "Completed"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChurnVaultState",
+      "docs": [
+        "State for a churn vault (internal mixing vault)",
+        "PRIVACY: Enables micro-movements that break graph heuristics"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault_index",
+            "type": "u8"
+          },
+          {
+            "name": "total_churned",
+            "type": "u64"
+          },
+          {
+            "name": "churn_count",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PendingWithdraw",
+      "docs": [
+        "A pending withdrawal request with time delay",
+        "PRIVACY: Only stores recipient (stealth address), not sender"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "requested_at",
+            "type": "i64"
+          },
+          {
+            "name": "available_at",
+            "type": "i64"
+          },
+          {
+            "name": "claimed",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PrivacyPool",
+      "docs": [
+        "The global privacy pool that holds aggregated funds",
+        "PRIVACY: Only stores aggregate stats, no individual deposit tracking"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "total_deposited",
+            "type": "u64"
+          },
+          {
+            "name": "total_withdrawn",
+            "type": "u64"
+          },
+          {
+            "name": "deposit_count",
+            "type": "u64"
+          },
+          {
+            "name": "withdraw_count",
+            "type": "u64"
+          },
+          {
+            "name": "churn_count",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StealthRegistry",
+      "docs": [
+        "Registry entry for a stealth payment",
+        "Stores metadata so recipient can scan and identify their payments"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "campaign",
+            "type": "pubkey"
+          },
+          {
+            "name": "stealth_address",
+            "type": "pubkey"
+          },
+          {
+            "name": "ephemeral_pub_key",
+            "type": "string"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

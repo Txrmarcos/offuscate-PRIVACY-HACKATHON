@@ -51,7 +51,7 @@ export default function LaunchPage() {
   const router = useRouter();
   const { connected, publicKey } = useWallet();
   const { setVisible } = useWalletModal();
-  const { createCampaign, isReady } = useProgram();
+  const { createCampaign, isConnected } = useProgram();
 
   const [step, setStep] = useState(1);
   const [isLaunching, setIsLaunching] = useState(false);
@@ -86,8 +86,8 @@ export default function LaunchPage() {
       return;
     }
 
-    if (!isReady) {
-      setError('Wallet not ready');
+    if (!isConnected) {
+      setError('Wallet not connected');
       return;
     }
 
@@ -100,7 +100,7 @@ export default function LaunchPage() {
       const durationDays = parseInt(formData.durationDays) || 30;
       const deadlineTimestamp = Math.floor(Date.now() / 1000) + durationDays * 24 * 60 * 60;
 
-      const result = await createCampaign(
+      const signature = await createCampaign(
         id,
         formData.title || 'Untitled Campaign',
         formData.description || 'No description',
@@ -109,7 +109,7 @@ export default function LaunchPage() {
       );
 
       setCampaignId(id);
-      setTxSignature(result.tx);
+      setTxSignature(signature);
       setLaunchSuccess(true);
     } catch (err: any) {
       console.error('Launch failed:', err);

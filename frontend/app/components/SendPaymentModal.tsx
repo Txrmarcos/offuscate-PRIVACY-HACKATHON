@@ -12,9 +12,9 @@ import {
   Connection,
 } from '@solana/web3.js';
 
-// Devnet RPC
-const DEVNET_RPC = 'https://api.devnet.solana.com';
-const devnetConnection = new Connection(DEVNET_RPC, 'confirmed');
+// Devnet RPC (uses Helius if configured)
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
+const devnetConnection = new Connection(RPC_URL, 'confirmed');
 import { PrivacyLevel } from '../lib/types';
 import { generateStealthAddress, parseStealthMetaAddress, StealthAddressResult } from '../lib/stealth';
 

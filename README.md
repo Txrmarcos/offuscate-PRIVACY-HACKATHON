@@ -1,244 +1,203 @@
-Perfeito. Agora a gente vai **organizar isso como produto + engenharia**, do jeito que jurado gosta: claro, mensurável e executável.
+Beleza. Vou **cortar 100% do papo de pitch** agora.
+Vou falar **só engenharia**, **só código**, **só o que falta pra aplicação EXISTIR**.
 
-Vou separar em **3 blocos**:
-
-1. O **que é o produto**
-2. **Stack escolhida (final, sem excesso)**
-3. **Roteiro step-by-step da aplicação** (fluxo do usuário + implementação)
+Respira e lê como checklist. 👇
 
 ---
 
-# 1️⃣ O PRODUTO (bem direto)
+# 📌 ESTADO ATUAL (real)
 
-### 🎯 Nome conceitual (exemplo)
+Hoje você tem **APENAS a FASE 1 parcialmente feita**:
 
-**ShadowDonate** (nome é irrelevante agora, conceito importa)
+✅ Stealth keys
+✅ Derivação client-side
+✅ Envio para stealth address
+❌ **Claim incompleto / frágil**
+❌ **Privacidade ainda rastreável**
+❌ **Nenhuma camada de valor oculto**
+❌ **Nenhuma pool**
+❌ **Nenhuma normalização de fluxo**
 
-### O que é
-
-Uma **plataforma de doações e crowdfunding com privacidade configurável**, onde:
-
-* o **valor** pode ser ocultado
-* o **destino** pode ser ofuscado
-* o **usuário escolhe o nível de privacidade**
-* quanto maior a privacidade → **maior a fee da plataforma**
-
-Além disso, a plataforma expõe um **SDK** para terceiros integrarem pagamentos privados.
-
----
-
-# 2️⃣ STACK FINAL ESCOLHIDA (SEM INVENTAR MODA)
-
-## 🧩 Ferramentas (as que você realmente vai usar)
-
-### 🔒 Privacidade
-
-* **Confidential Transfers (C-SPL)** → esconder valor
-* **Stealth Addresses (client-side)** → esconder destino
-* **Noir (ZK)** → ZK receipt / prova de doação
-
-### 🧠 Infra / UX
-
-* **Helius** → RPC, indexação, status de tx, bounty
+Ou seja: **Stealth sozinho ≠ privacidade real**.
+Agora sim, vamos ao que **FALTA IMPLEMENTAR**.
 
 ---
 
-## 📦 Produtos separados (importante)
+# 🔴 O QUE FALTA — SEM ENFEITE
 
-### Produto A — **APP (B2C)**
-
-* Doações privadas
-* Crowdfunding sensível
-* UX simples, foco em usuário final
-
-### Produto B — **SDK (B2B / Dev)**
-
-* Abstrai toda a lógica de privacidade
-* Usado pelo próprio app
-* Demonstra “privacy tooling”
+Vou dividir em **FASE 2, 3 e 4**, exatamente como você pediu.
 
 ---
 
-# 3️⃣ ROTEIRO DA APLICAÇÃO (STEP-BY-STEP)
+## 🟡 FASE 2 — ESCONDER O VALOR (obrigatório)
 
-## 🔹 FLUXO DO USUÁRIO (APP)
+Hoje:
 
-### 🧍‍♂️ 1. Usuário entra na plataforma
+* Qualquer explorer vê **quanto** foi doado
+* Mesmo com stealth, isso **quebra anonimato**
 
-* Conecta wallet (Phantom / Backpack)
-* Nenhuma informação pessoal
-* UI minimalista
+### O que falta implementar:
 
----
+### ✅ Confidential Transfers (C-SPL)
 
-### 🎯 2. Escolhe uma campanha ou cria uma
+Você PRECISA:
 
-Campos:
+1. Criar **mint confidencial**
+2. Ativar:
 
-* Nome da campanha
-* Descrição
-* Endereço do beneficiário (NÃO exposto publicamente)
+   * confidential balance
+   * confidential transfer
+3. Adaptar o fluxo de envio para:
 
----
+   * `encryptedAmount`
+   * `rangeProof`
 
-### 🔐 3. Escolhe o **nível de privacidade** (core do produto)
+📌 Sem isso:
 
-Slider ou cards:
-
-#### 🔹 Level 1 — Básico
-
-* Transferência direta
-* Sem stealth
-* Fee baixa
-
-#### 🔹 Level 2 — Privado
-
-* ✅ Confidential Transfer
-* Valor oculto
-* Fee média
-
-#### 🔹 Level 3 — Anônimo
-
-* ✅ Confidential Transfer
-* ✅ Stealth Address
-* Fee maior
-
-> (Isso já é suficiente pro hackathon)
+> Stealth = só “novo endereço”, não privacidade.
 
 ---
 
-### 💸 4. Confirma doação
+## 🟡 FASE 3 — QUEBRAR LINKABILIDADE (o problema que você sentiu)
 
-* UI mostra:
+Você mesmo percebeu:
 
-  * nível de privacidade
-  * fee cobrada
-  * “o que será ocultado”
+> “ainda dá pra rastrear”
 
----
+Sim. Porque hoje o fluxo é:
 
-### ⚙️ 5. Execução da transação (por baixo dos panos)
-
-Aqui entra o **SDK**, não o app direto:
-
-1. SDK gera **stealth address**
-2. SDK executa **confidential transfer**
-3. SDK registra metadata local (hash, proof id)
-4. SDK retorna status via **Helius**
-
----
-
-### ✅ 6. Confirmação + animação
-
-* Animação diferente por nível:
-
-  * 1 → 1
-  * 1 → many → 1
-  * graph quebrado (anônimo)
-* UX forte (importante pro pitch)
-
----
-
-### 🧾 7. (Opcional, mas forte) ZK Receipt
-
-* Usuário pode:
-
-  * provar que doou
-  * provar que participou da campanha
-  * sem revelar valor ou identidade
-
-Implementado com **Noir**.
-
----
-
-## 🔹 FLUXO TÉCNICO (SDK)
-
-### 🎁 SDK exposto assim:
-
-```ts
-import { PrivacySDK } from "@shadow/sdk";
-
-const sdk = new PrivacySDK({ rpc: helius });
-
-await sdk.send({
-  to: campaignAddress,
-  amount: 10,
-  privacyLevel: "high"
-});
+```
+wallet → stealthAddress → claim
 ```
 
----
-
-### 🧠 O que o SDK faz internamente
-
-#### 1️⃣ Privacy Engine
-
-* Interpreta `privacyLevel`
-* Decide:
-
-  * stealth on/off
-  * confidential on/off
-  * fee
+Isso é **linear**. Indexador ama isso.
 
 ---
 
-#### 2️⃣ Stealth Module
+### ❗ O que falta aqui (ESSENCIAL):
 
-* Gera endereço efêmero
-* Resolve internamente
-* Nunca expõe publicamente
+## ✅ POOL INTERMEDIÁRIA (sim, faz sentido)
 
----
+Você perguntou antes e a resposta é: **SIM, É OBRIGATÓRIO**.
 
-#### 3️⃣ Confidential Transfer Module
+### Nova arquitetura real:
 
-* Usa SPL confidential
-* Mascara valores
-* Compatível com Solana nativo
+```
+wallet
+  ↓
+[ privacy pool ]
+  ↓
+stealth address
+  ↓
+claim
+```
 
----
+### Essa pool precisa:
 
-#### 4️⃣ ZK Module (Noir)
+* Receber **múltiplas doações**
+* Misturar timing
+* Misturar valores (com C-SPL)
+* Liberar saídas em momentos diferentes
 
-* Gera:
+📌 Pode ser:
 
-  * receipt proof
-  * donation proof
-* Verificável on-chain ou off-chain
+* Programa Anchor simples
+* Ou conta PDA controlada por lógica mínima
 
----
+Sem isso:
 
-## 🔹 MENSURAÇÃO (O QUE VOCÊ MOSTRA PRO JURADO)
-
-### 📊 Métricas simples
-
-* Nº de doações privadas
-* % de usuários por nível de privacidade
-* Fee média por nível
-
----
-
-### 🧠 Valor claro
-
-* Privacidade = produto
-* Privacidade = escolha
-* Privacidade = monetização
+> Stealth continua rastreável por correlação temporal.
 
 ---
 
-# 🧠 RESUMO EXECUTIVO (pitch-ready)
+## 🟡 FASE 4 — CLAIM DECENTE (hoje tá fraco)
 
-> “Construímos uma plataforma de doações privadas em Solana onde o usuário escolhe quanto anonimato quer.
-> Por baixo, usamos Confidential Transfers para esconder valores, Stealth Addresses para ofuscar destinos e ZK proofs para gerar recibos verificáveis.
-> Tudo isso é abstraído em um SDK reutilizável, permitindo que qualquer app integre pagamentos privados com uma única função.”
+Hoje o claim depende de:
+
+* RPC
+* scan frágil
+* localStorage
+
+Isso **não fecha o ciclo**.
 
 ---
 
-## Próximo passo (você escolhe):
+### O que falta implementar no claim:
 
-1️⃣ Arquitetura técnica (diagrama)
-2️⃣ Backlog MVP (48–72h)
-3️⃣ Script de demo / vídeo do hackathon
-4️⃣ Copy exata de submissão por track
+#### ✅ Claim determinístico
 
-Só mandar.
+O receiver deve conseguir:
+
+1. Re-derivar stealth address
+2. Provar ownership
+3. Sacar da pool **sem revelar origem**
+
+Idealmente:
+
+* usando CPI
+* ou assinatura derivada
+
+📌 Mesmo que seja simples:
+
+> Claim precisa ser **1-click e confiável**.
+
+---
+
+## 🔴 COISAS QUE ESTÃO ERRADAS HOJE (sem julgamento)
+
+Vou ser direto:
+
+❌ LocalStorage como fonte de verdade
+❌ Registro on-chain linkável
+❌ Envio direto wallet → stealth
+❌ Sem batching
+❌ Sem delay
+❌ Sem pad de valor
+
+Isso é **ok pra POC**, mas **não fecha produto**.
+
+---
+
+# ✅ RESUMO FINAL — O QUE REALMENTE FALTA
+
+Se você quer “fechar” a aplicação, faltam **4 blocos técnicos**:
+
+### 1️⃣ Confidential Transfers funcionando
+
+→ esconder valor
+
+### 2️⃣ Pool intermediária
+
+→ quebrar linkabilidade
+
+### 3️⃣ Fluxo de claim sólido
+
+→ receiver consegue sacar sem vazar origem
+
+### 4️⃣ Normalização de comportamento
+
+→ delay, batch, dust (mínimo)
+
+---
+
+# ⚠️ VERDADE DURA (mas útil)
+
+Sem **FASE 2 + 3**, isso é só:
+
+> “endereço descartável”
+
+Com elas, vira:
+
+> **infra de privacidade**
+
+---
+
+## Próximo passo (engenharia pura)
+
+Se você quiser, eu posso:
+
+* desenhar **o fluxo exato da pool em Anchor**
+* ou escrever **o pseudocódigo completo do Phase 2–4**
+* ou te dar **a ordem exata de implementação (arquivo por arquivo)**
+
+Você escolhe.
