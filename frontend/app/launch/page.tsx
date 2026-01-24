@@ -7,6 +7,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PrivacyLevel } from '../lib/types';
 import { useProgram } from '../lib/program';
+import { triggerOffuscation } from '../components/WaveMeshBackground';
 
 const TOTAL_STEPS = 4;
 
@@ -110,6 +111,7 @@ export default function LaunchPage() {
       setCampaignId(id);
       setTxSignature(signature);
       setLaunchSuccess(true);
+      triggerOffuscation();
     } catch (err: any) {
       console.error('Launch failed:', err);
       setError(err.message || 'Failed to launch campaign');

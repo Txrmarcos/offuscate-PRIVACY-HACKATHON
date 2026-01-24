@@ -16,6 +16,7 @@ const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.co
 const devnetConnection = new Connection(RPC_URL, 'confirmed');
 import { PrivacyLevel } from '../lib/types';
 import { generateStealthAddress, parseStealthMetaAddress, StealthAddressResult } from '../lib/stealth';
+import { triggerOffuscation } from './WaveMeshBackground';
 
 interface SendPaymentModalProps {
   onClose: () => void;
@@ -196,6 +197,9 @@ export function SendPaymentModal({ onClose }: SendPaymentModalProps) {
 
       setTxHash(signature);
       setStep('success');
+
+      // Trigger offuscation effect on successful transaction
+      triggerOffuscation();
     } catch (err) {
       console.error('Transaction error:', err);
       setError(err instanceof Error ? err.message : 'Transaction failed');

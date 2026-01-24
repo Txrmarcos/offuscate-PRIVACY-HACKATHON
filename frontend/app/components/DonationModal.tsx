@@ -20,6 +20,7 @@ import {
   parseStealthMetaAddress,
 } from '../lib/stealth';
 import { privateDonation, type ShadowWireWallet } from '../lib/privacy/shadowWire';
+import { triggerOffuscation } from './WaveMeshBackground';
 
 const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 const POOL_AMOUNTS = [0.1, 0.5, 1.0];
@@ -153,6 +154,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
 
         setTxSignature(result.signature!);
         setIsDone(true);
+        triggerOffuscation();
 
       } else if (selectedPrivacy === 'SEMI') {
         if (!poolInitialized) {
@@ -169,11 +171,13 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         const sig = await poolDeposit(amountSol);
         setTxSignature(sig);
         setIsDone(true);
+        triggerOffuscation();
 
       } else {
         const sig = await donate(campaign.id, amountSol);
         setTxSignature(sig);
         setIsDone(true);
+        triggerOffuscation();
       }
     } catch (err: any) {
       console.error('Donation failed:', err);
