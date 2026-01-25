@@ -35,6 +35,7 @@ const privacyOptions: {
   level: PrivacyLevel;
   title: string;
   description: string;
+  shortDesc: string;
   icon: typeof Eye;
   badge?: string;
   tag?: string;
@@ -43,7 +44,8 @@ const privacyOptions: {
   {
     level: 'ZK_COMPRESSED',
     title: 'ZK Private',
-    description: 'Light Protocol compression. Sender completely unlinked from donation.',
+    description: 'Your wallet never linked to this donation. Zero-knowledge proof hides the connection.',
+    shortDesc: 'Identity protected',
     icon: Binary,
     badge: 'Devnet',
     tag: 'Recommended',
@@ -52,7 +54,8 @@ const privacyOptions: {
   {
     level: 'PRIVATE',
     title: 'ShadowWire',
-    description: 'Bulletproofs ZK. Amount AND sender hidden.',
+    description: 'Maximum anonymity. Both your identity AND the amount are hidden.',
+    shortDesc: 'Fully anonymous',
     icon: Lock,
     badge: 'Mainnet',
     privacyScore: 100,
@@ -60,7 +63,8 @@ const privacyOptions: {
   {
     level: 'PUBLIC',
     title: 'Public',
-    description: 'Standard transfer. Fully visible on explorer.',
+    description: 'Anyone can see you donated. Your wallet is linked forever.',
+    shortDesc: 'Fully exposed',
     icon: Eye,
     privacyScore: 0,
   },
@@ -216,8 +220,11 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
           Support {campaign.title}
         </h2>
 
-        <p className="text-white/40 text-sm mb-6">
-          Your donation goes directly to the campaign vault.
+        <p className="text-white/40 text-sm mb-2">
+          Help this cause. Keep your identity private.
+        </p>
+        <p className="text-white/25 text-xs mb-6">
+          Your SOL goes directly to the campaign. Your wallet stays hidden.
         </p>
 
         {/* Amount input */}
@@ -299,34 +306,44 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         </div>
 
         {/* Privacy score indicator */}
-        <div className="mb-4 p-4 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+        <div className={`mb-4 p-4 rounded-xl border ${
+          selectedPrivacy === 'PUBLIC'
+            ? 'bg-white/[0.01] border-white/[0.04]'
+            : 'bg-white/[0.03] border-white/[0.08]'
+        }`}>
           <div className="flex items-start gap-3">
-            {selectedOption && <selectedOption.icon className="w-5 h-5 text-white/50 flex-shrink-0 mt-0.5" />}
+            {selectedOption && <selectedOption.icon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+              selectedPrivacy === 'PUBLIC' ? 'text-white/30' : 'text-white'
+            }`} />}
             <div className="flex-1">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-white text-sm font-medium">
-                  {selectedPrivacy === 'ZK_COMPRESSED' ? 'ZK Protected Donation' :
-                   selectedPrivacy === 'PRIVATE' ? 'Maximum Privacy Donation' :
-                   'Public Donation'}
+                  {selectedPrivacy === 'ZK_COMPRESSED' ? '🛡️ Protected Donation' :
+                   selectedPrivacy === 'PRIVATE' ? '👻 Anonymous Donation' :
+                   '👁️ Exposed Donation'}
                 </p>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-white/30">Privacy</span>
                   <div className="w-20 h-1.5 bg-white/[0.1] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-white transition-all duration-500"
+                      className={`h-full transition-all duration-500 ${
+                        selectedPrivacy === 'PUBLIC' ? 'bg-white/30' : 'bg-white'
+                      }`}
                       style={{ width: `${selectedOption?.privacyScore || 0}%` }}
                     />
                   </div>
-                  <span className="text-xs font-mono text-white/60">{selectedOption?.privacyScore}%</span>
+                  <span className={`text-xs font-mono ${
+                    selectedPrivacy === 'PUBLIC' ? 'text-white/30' : 'text-white/60'
+                  }`}>{selectedOption?.privacyScore}%</span>
                 </div>
               </div>
               <p className="text-white/40 text-xs">
                 {selectedPrivacy === 'ZK_COMPRESSED' ? (
-                  <>Light Protocol compresses your transfer into a Merkle tree. Your wallet address is <strong className="text-white/70">never linked</strong> to this campaign on-chain.</>
+                  <>Your wallet address is <strong className="text-white/70">never linked</strong> to this donation. Nobody can trace it back to you.</>
                 ) : selectedPrivacy === 'PRIVATE' ? (
-                  <>Bulletproofs ZK hides both your identity AND the amount. Maximum privacy for mainnet.</>
+                  <>Complete anonymity. Your identity AND the amount are cryptographically hidden. Nobody knows you helped.</>
                 ) : (
-                  <>Standard Solana transfer. Your wallet will be directly visible as a donor on blockchain explorers.</>
+                  <>⚠️ Your wallet will be <strong className="text-white/60">permanently visible</strong> as a donor on blockchain explorers. Anyone can see this.</>
                 )}
               </p>
             </div>
@@ -355,18 +372,25 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
           {isProcessing ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              {selectedPrivacy === 'ZK_COMPRESSED' ? 'Creating ZK Proof...' :
-               selectedPrivacy === 'PRIVATE' ? 'Generating Bulletproof...' : 'Processing...'}
+              {selectedPrivacy === 'ZK_COMPRESSED' ? 'Protecting your identity...' :
+               selectedPrivacy === 'PRIVATE' ? 'Making you invisible...' : 'Processing...'}
             </>
           ) : connected ? (
             <>
-              Donate {amount} SOL
+              {selectedPrivacy === 'PUBLIC' ? `Donate ${amount} SOL` : `Donate ${amount} SOL Privately`}
               <ArrowRight className="w-4 h-4" />
             </>
           ) : (
             'Connect Wallet'
           )}
         </button>
+
+        {/* Privacy reassurance */}
+        {selectedPrivacy !== 'PUBLIC' && (
+          <p className="text-center text-white/20 text-[10px] mt-3">
+            Your wallet address will never be linked to this donation
+          </p>
+        )}
       </div>
     </div>
   );

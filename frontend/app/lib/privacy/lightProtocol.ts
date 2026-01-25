@@ -499,8 +499,9 @@ export async function privateZKDonation(
   amountSol: number
 ): Promise<TransferResult> {
   try {
-    console.log('[LightProtocol] Starting private ZK donation of', amountSol, 'SOL');
+    console.log('[LightProtocol] Starting private ZK donation of', amountSol, 'SOL to', recipientPubkey.toBase58());
 
+    // Step 1: Compress SOL to hide sender identity
     // Check if we already have enough compressed SOL
     const currentBalance = await getCompressedBalance(wallet.publicKey);
     console.log('[LightProtocol] Current compressed balance:', currentBalance.sol, 'SOL');
@@ -509,7 +510,7 @@ export async function privateZKDonation(
 
     if (currentBalance.lamports < lamportsNeeded) {
       // Need to compress more SOL first
-      const toCompress = amountSol - currentBalance.sol + 0.001; // Add buffer for fees
+      const toCompress = amountSol - currentBalance.sol + 0.002; // Add buffer for fees
       console.log('[LightProtocol] Need to compress', toCompress, 'SOL first');
 
       const compressResult = await compressSOL(wallet, toCompress);
@@ -520,21 +521,26 @@ export async function privateZKDonation(
         };
       }
 
-      console.log('[LightProtocol] Compression successful, now transferring...');
+      console.log('[LightProtocol] Compression successful, now decompressing to recipient...');
     }
 
-    // Transfer to recipient
-    const transferResult = await transferCompressedSOL(wallet, recipientPubkey, amountSol);
+    // Step 2: Decompress SOL directly to the campaign vault
+    // This sends REGULAR SOL to the vault (not compressed SOL)
+    // The vault can now see and use this balance
+    const decompressResult = await decompressSOL(wallet, amountSol, recipientPubkey);
 
-    if (!transferResult.success) {
+    if (!decompressResult.success) {
       return {
         success: false,
-        error: `Failed to transfer: ${transferResult.error}`,
+        error: `Failed to decompress to vault: ${decompressResult.error}`,
       };
     }
 
-    console.log('[LightProtocol] Private ZK donation complete!');
-    return transferResult;
+    console.log('[LightProtocol] Private ZK donation complete! Vault received regular SOL.');
+    return {
+      success: true,
+      signature: decompressResult.signature,
+    };
 
   } catch (error: any) {
     console.error('[LightProtocol] Private donation error:', error);

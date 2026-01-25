@@ -32,26 +32,26 @@ const privacyOptions = [
     level: 'PUBLIC' as PrivacyLevel,
     title: 'Public',
     subtitle: 'Transparent',
-    description: 'Full visibility. Best for maximum trust.',
+    description: 'Donors are visible. Best when you want to recognize supporters publicly.',
     icon: Eye,
-    features: ['Visible on explorer', 'Donor names shown', 'Full transparency'],
+    features: ['Donors visible', 'Amounts shown', 'Full transparency'],
   },
   {
     level: 'SEMI' as PrivacyLevel,
     title: 'Semi-Private',
-    subtitle: 'Balanced',
-    description: 'Stealth addresses hide sender identity.',
+    subtitle: 'Protected',
+    description: 'Donors stay anonymous. Perfect for sensitive causes.',
     icon: Shield,
-    features: ['Sender hidden', 'Amount visible', 'Relayer protected'],
+    features: ['Donors hidden', 'Amounts visible', 'Safe for sensitive causes'],
     recommended: true,
   },
   {
     level: 'ZK_COMPRESSED' as PrivacyLevel,
-    title: 'ZK Compressed',
+    title: 'ZK Private',
     subtitle: 'Maximum Privacy',
-    description: 'Zero-knowledge proofs. Complete anonymity.',
+    description: 'Complete anonymity. Nobody knows who helped.',
     icon: Binary,
-    features: ['Sender hidden', 'Amount hidden', 'ZK verified'],
+    features: ['Donors hidden', 'Amounts hidden', 'Cryptographically private'],
   },
 ];
 
@@ -160,8 +160,11 @@ export default function LaunchPage() {
           </div>
 
           <h1 className="text-4xl font-bold text-white mb-3">You're Live!</h1>
-          <p className="text-white/40 mb-8 text-lg">
-            Your campaign is now accepting private donations on Solana
+          <p className="text-white/40 mb-3 text-lg">
+            Your campaign is now accepting donations
+          </p>
+          <p className="text-white/25 mb-8 text-sm">
+            Share it with supporters. They can help you anonymously.
           </p>
 
           {/* Campaign preview */}
@@ -336,13 +339,16 @@ export default function LaunchPage() {
               <div className="mb-10">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] mb-4">
                   <Shield className="w-4 h-4 text-white/40" />
-                  <span className="text-xs text-white/40">Privacy Settings</span>
+                  <span className="text-xs text-white/40">Protect Your Donors</span>
                 </div>
                 <h1 className="text-4xl font-bold text-white mb-3">
-                  How private should donations be?
+                  How much protection do supporters need?
                 </h1>
-                <p className="text-white/40 text-lg">
-                  Choose the level of anonymity for your supporters.
+                <p className="text-white/40 text-lg mb-2">
+                  Some causes need visible support. Others need quiet help.
+                </p>
+                <p className="text-white/25 text-sm">
+                  Private donations encourage more giving from people who can't be public.
                 </p>
               </div>
 

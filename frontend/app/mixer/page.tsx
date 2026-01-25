@@ -373,8 +373,11 @@ export default function MixerPage() {
             <Shuffle className="w-10 h-10 text-white/60" />
           </div>
           <h1 className="text-4xl font-black tracking-tighter text-white mb-4">ShadowMix</h1>
-          <p className="text-white/40 text-lg mb-8">
-            Private transfers between wallets. Connect to start mixing.
+          <p className="text-white/40 text-lg mb-3">
+            Break the link between your wallets.
+          </p>
+          <p className="text-white/25 text-sm mb-8">
+            Move funds without leaving a trace. Your transactions, your privacy.
           </p>
           <button
             onClick={() => setVisible(true)}
@@ -426,7 +429,7 @@ export default function MixerPage() {
               <h1 className="text-3xl font-bold text-white">ShadowMix</h1>
             </div>
             <p className="text-white/40 text-sm">
-              Private transfers & mixing. Break the on-chain link between wallets.
+              Move funds invisibly. Nobody can connect your wallets.
             </p>
           </div>
           <div className="flex items-center gap-3">
