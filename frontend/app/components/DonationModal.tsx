@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Eye, Lock, ArrowRight, Loader2, Binary, Info, Zap } from 'lucide-react';
+import { X, Eye, Lock, ArrowRight, Loader2, Binary, Info, Zap, Clock, Users } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useConnection } from '@solana/wallet-adapter-react';
@@ -20,6 +20,7 @@ import {
 } from '../lib/stealth';
 import { privateDonation, type ShadowWireWallet } from '../lib/privacy/shadowWire';
 import { privateZKDonation, type LightWallet, isLightProtocolAvailable } from '../lib/privacy/lightProtocol';
+import { queuePrivateDonation, type BatchDonationResult } from '../lib/privacy/batchDonation';
 import { triggerOffuscation } from './WaveMeshBackground';
 import { FullScreenPrivacyAnimation } from './PrivacyGraphAnimation';
 
@@ -44,12 +45,12 @@ const privacyOptions: {
   {
     level: 'ZK_COMPRESSED',
     title: 'ZK Private',
-    description: 'Your wallet never linked to this donation. Zero-knowledge proof hides the connection.',
-    shortDesc: 'Identity protected',
+    description: 'Donations batched together. No timing or address link. Maximum anonymity.',
+    shortDesc: 'Fully anonymous',
     icon: Binary,
     badge: 'Devnet',
     tag: 'Recommended',
-    privacyScore: 95,
+    privacyScore: 100,
   },
   {
     level: 'PRIVATE',
@@ -80,10 +81,14 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
   const [campaignMetaAddress, setCampaignMetaAddress] = useState<string | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
 
+  // Batch queue state
+  const [batchResult, setBatchResult] = useState<BatchDonationResult | null>(null);
+  const [isQueued, setIsQueued] = useState(false);
+
   const { connected, publicKey, signTransaction, signMessage } = useWallet();
   const { connection } = useConnection();
   const { setVisible } = useWalletModal();
-  const { donate, fetchCampaign, isConnected } = useProgram();
+  const { donate, fetchCampaign, isConnected, privateDeposit } = useProgram();
 
   useEffect(() => {
     const loadCampaignMeta = async () => {
@@ -152,24 +157,34 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
       } else if (selectedPrivacy === 'ZK_COMPRESSED') {
         const { vaultPda } = getCampaignPDAs(campaign.id);
 
-        if (!signTransaction) {
-          setError('Your wallet does not support required signing.');
+        if (!signMessage) {
+          setError('Your wallet does not support message signing.');
           setIsProcessing(false);
           return;
         }
 
-        const lightWallet: LightWallet = {
-          publicKey: publicKey!,
-          signTransaction: signTransaction as any,
-        };
+        // Use batch donation system for TRUE privacy
+        // 1. Deposit to privacy pool (breaks sender link)
+        // 2. Queue with relayer for batch processing (breaks timing link)
+        // 3. Relayer processes in batch later (no link between donor and campaign)
 
-        const result = await privateZKDonation(lightWallet, vaultPda, amountSol);
+        const result = await queuePrivateDonation(
+          privateDeposit,
+          campaign.id,
+          vaultPda.toBase58(),
+          amountSol,
+          publicKey!,
+          signMessage
+        );
 
         if (!result.success) {
-          throw new Error(result.error || 'ZK Compressed donation failed');
+          throw new Error(result.error || 'Private donation failed');
         }
 
-        setTxSignature(result.signature!);
+        // Show queued status instead of immediate success
+        setBatchResult(result);
+        setIsQueued(true);
+        setTxSignature(result.depositSignature || null);
         setIsDone(true);
         triggerOffuscation();
 
@@ -188,6 +203,78 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
     }
   };
 
+  // Queued batch donation success screen
+  if (isDone && isQueued && batchResult) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
+        <div className="relative w-full max-w-md bg-[#0a0a0a] border border-white/[0.08] rounded-2xl p-8 text-center">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-green-500/10 flex items-center justify-center">
+            <Clock className="w-8 h-8 text-green-400" />
+          </div>
+
+          <h2 className="text-2xl font-bold text-white mb-2">
+            Donation Queued
+          </h2>
+
+          <p className="text-white/60 mb-6">
+            Your {amount} SOL is now in the privacy pool. It will be sent to <strong className="text-white">{campaign.title}</strong> in the next batch.
+          </p>
+
+          <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-white/40 text-sm">Queue Position</span>
+              <span className="text-white font-mono">#{batchResult.queuePosition}</span>
+            </div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-white/40 text-sm">Estimated Processing</span>
+              <span className="text-white font-mono">
+                {batchResult.estimatedProcessingTime ? `~${Math.ceil(batchResult.estimatedProcessingTime / 60)} min` : '< 5 min'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-white/40 text-sm">Donation ID</span>
+              <span className="text-white/60 font-mono text-xs">
+                {batchResult.donationId?.slice(0, 12)}...
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-green-500/5 border border-green-500/10 rounded-xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <Users className="w-5 h-5 text-green-400/80 flex-shrink-0 mt-0.5" />
+              <div className="text-left">
+                <p className="text-green-400/90 text-sm font-medium mb-1">Maximum Privacy</p>
+                <p className="text-green-400/60 text-xs">
+                  Your donation will be processed together with others. No one can link your wallet to this campaign.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {batchResult.depositSignature && (
+            <a
+              href={`https://explorer.solana.com/tx/${batchResult.depositSignature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white/30 text-xs hover:text-white/50 transition-colors"
+            >
+              View deposit tx
+            </a>
+          )}
+
+          <button
+            onClick={onClose}
+            className="w-full mt-4 py-3 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular transaction success screen
   if (isDone && txSignature) {
     return (
       <FullScreenPrivacyAnimation
@@ -318,7 +405,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
             <div className="flex-1">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-white text-sm font-medium">
-                  {selectedPrivacy === 'ZK_COMPRESSED' ? '🛡️ Protected Donation' :
+                  {selectedPrivacy === 'ZK_COMPRESSED' ? '🛡️ Batch Anonymous Donation' :
                    selectedPrivacy === 'PRIVATE' ? '👻 Anonymous Donation' :
                    '👁️ Exposed Donation'}
                 </p>
@@ -339,7 +426,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
               </div>
               <p className="text-white/40 text-xs">
                 {selectedPrivacy === 'ZK_COMPRESSED' ? (
-                  <>Your wallet address is <strong className="text-white/70">never linked</strong> to this donation. Nobody can trace it back to you.</>
+                  <>Funds go to privacy pool first, then processed in batch with others. <strong className="text-white/70">No timing or address link</strong> to this campaign.</>
                 ) : selectedPrivacy === 'PRIVATE' ? (
                   <>Complete anonymity. Your identity AND the amount are cryptographically hidden. Nobody knows you helped.</>
                 ) : (
@@ -354,7 +441,11 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         <div className="mb-4 p-3 bg-green-500/5 border border-green-500/10 rounded-xl flex items-center gap-3">
           <Zap className="w-4 h-4 text-green-400/60" />
           <p className="text-[11px] text-green-400/70">
-            <strong>Direct to campaign:</strong> Your SOL goes straight to {campaign.title}'s vault. The campaign owner can withdraw anytime.
+            {selectedPrivacy === 'ZK_COMPRESSED' ? (
+              <><strong>Batched for privacy:</strong> Funds go to privacy pool first, then processed in batch to hide timing. Typically delivered within 5 minutes.</>
+            ) : (
+              <><strong>Direct to campaign:</strong> Your SOL goes straight to {campaign.title}'s vault. The campaign owner can withdraw anytime.</>
+            )}
           </p>
         </div>
 
@@ -372,7 +463,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
           {isProcessing ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              {selectedPrivacy === 'ZK_COMPRESSED' ? 'Protecting your identity...' :
+              {selectedPrivacy === 'ZK_COMPRESSED' ? 'Depositing to privacy pool...' :
                selectedPrivacy === 'PRIVATE' ? 'Making you invisible...' : 'Processing...'}
             </>
           ) : connected ? (

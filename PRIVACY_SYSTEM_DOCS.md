@@ -87,34 +87,58 @@ Anyone can trace funds, identify donors, and link wallets.
 
 | Level | Name | Description | Privacy Score |
 |-------|------|-------------|---------------|
-| `ZK_COMPRESSED` | **ZK Private** (Recommended) | Light Protocol compression. Sender completely unlinked from donation. | 95% |
+| `ZK_COMPRESSED` | **ZK Private** (Recommended) | Batch processing via Privacy Pool. Donations batched together. | 100% |
 | `PRIVATE` | **ShadowWire** | Bulletproofs ZK. Amount AND sender hidden. | 100% |
 | `PUBLIC` | **Public** | Standard transfer. Fully visible on explorer. | 0% |
 
-#### How ZK Private Donations Work
+#### How ZK Private Donations Work (Batch System)
+
+The batch donation system provides **maximum privacy** by:
+1. Breaking the **address link** (donor deposits to privacy pool)
+2. Breaking the **timing link** (donations processed in batches)
+3. Breaking the **amount link** (standardized amounts: 0.1, 0.5, 1.0 SOL)
 
 ```
-Donor Wallet                                         Campaign Vault
-     │                                                      ▲
-     │  1. Compress SOL (break sender link)                 │
-     ▼                                                      │
- ┌─────────────┐                                            │
- │ Merkle Tree │  ← SOL stored as compressed leaf           │
- │    Leaf     │                                            │
- └──────┬──────┘                                            │
-        │                                                   │
-        │  2. Generate ZK proof (Groth16)                   │
-        ▼                                                   │
- ┌─────────────────┐                                        │
- │    ZK Proof     │  ← Proves valid transfer without       │
- │   Verification  │     revealing sender/amount            │
- └────────┬────────┘                                        │
-          │                                                 │
-          │  3. Transfer to campaign vault                  │
-          ▼                                                 │
- ┌─────────────────┐                                        │
- │ Campaign Vault  │────────────────────────────────────────┘
- └─────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        BATCH DONATION FLOW                                │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  STEP 1: DEPOSIT TO PRIVACY POOL                                         │
+│  ────────────────────────────────                                        │
+│  Donor Wallet ────────────────► Privacy Pool                             │
+│       │                              │                                   │
+│       │  commitment = hash(secret +  │                                   │
+│       │               nullifier +    │                                   │
+│       │               amount)        │                                   │
+│       │                              │                                   │
+│       └─ This tx is visible but NOT linked to campaign                   │
+│                                                                          │
+│  STEP 2: QUEUE WITH RELAYER                                              │
+│  ──────────────────────────────                                          │
+│  Donation intent stored locally. Relayer queues for batch processing.   │
+│                                                                          │
+│       Queue: [Don_1, Don_2, Don_3, ...]                                  │
+│                     │                                                    │
+│                     ▼                                                    │
+│       Batched when: 2+ donations OR 5 minutes elapsed                    │
+│                                                                          │
+│  STEP 3: BATCH PROCESSING (by Relayer)                                   │
+│  ──────────────────────────────────────                                  │
+│  Relayer withdraws from pool → sends to campaign vaults                  │
+│                                                                          │
+│       Privacy Pool ────┬──────────────► Campaign A Vault                 │
+│            │           │                                                 │
+│            │           └──────────────► Campaign B Vault                 │
+│            │                                                             │
+│            └─ Relayer pays gas. Donors never appear in this tx!          │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+RESULT:
+  - On-chain: Donor → Pool (no campaign link)
+  - On-chain: Pool → Campaign (relayer-signed, no donor link)
+  - Timeline: Deposit and withdrawal at different times (breaks timing)
+  - Amounts: Standardized (breaks amount correlation)
 ```
 
 #### Key Features
@@ -558,6 +582,91 @@ Claim from commitment system via relayer.
 }
 ```
 
+### Batch Donation Endpoints
+
+#### `POST /api/relayer/queue-donation`
+Queue a private donation for batch processing.
+
+```json
+// Request
+{
+  "commitment": "hex_commitment_hash",
+  "nullifier": "hex_nullifier_hash",
+  "secretHash": "hex_secret_hash",
+  "amount": 100000000,
+  "campaignId": "my-campaign-id",
+  "campaignVault": "base58_vault_address",
+  "donorSignature": "hex_signature"
+}
+
+// Response
+{
+  "success": true,
+  "donationId": "don_1234567890_abc123",
+  "queuePosition": 3,
+  "estimatedProcessingTime": 120,
+  "message": "Donation queued. Will be processed in batch for maximum privacy."
+}
+```
+
+#### `GET /api/relayer/queue-donation?id={donationId}`
+Check status of a queued donation.
+
+```json
+// Response
+{
+  "success": true,
+  "donation": {
+    "id": "don_1234567890_abc123",
+    "status": "pending", // pending | processing | completed | failed
+    "campaignId": "my-campaign-id",
+    "amount": 100000000,
+    "timestamp": 1706140800000,
+    "processedAt": null,
+    "txSignature": null,
+    "error": null
+  }
+}
+```
+
+#### `GET /api/relayer/process-batch`
+Get batch queue status.
+
+```json
+// Response
+{
+  "success": true,
+  "status": {
+    "pending": 5,
+    "processing": 0,
+    "minBatchSize": 2,
+    "queueAgeSeconds": 180,
+    "maxQueueAgeSeconds": 300,
+    "shouldProcess": true,
+    "lastProcessed": 1706140000000,
+    "totalProcessed": 42,
+    "totalFailed": 1
+  }
+}
+```
+
+#### `POST /api/relayer/process-batch`
+Trigger batch processing (admin/cron job).
+
+```json
+// Response
+{
+  "success": true,
+  "message": "Processed 5 donations",
+  "processed": 4,
+  "failed": 1,
+  "results": [
+    { "id": "don_1", "success": true, "signature": "tx_sig_1" },
+    { "id": "don_2", "success": true, "signature": "tx_sig_2" }
+  ]
+}
+```
+
 ### Light Protocol Endpoints
 
 #### `GET /api/light/health`
@@ -609,7 +718,8 @@ Get compressed SOL balance.
 |-------|-------|---------------|----------------|
 | PUBLIC | 0% | Nothing | Sender, receiver, amount, time |
 | SEMI | 70% | Direct link | Pool deposit/withdraw |
-| ZK_COMPRESSED | 95% | Sender, link | Compression/decompression events |
+| ZK_COMPRESSED | 100% | Sender, timing, link | Deposit to pool (not linked to campaign) |
+| PRIVATE | 100% | Sender, amount, link | Pool activity |
 | PRIVATE | 100% | Everything | Only network metadata |
 
 ### Best Practices for Users

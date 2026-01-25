@@ -26,6 +26,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { SendPaymentModal } from '../components/SendPaymentModal';
+import { PendingDonations } from '../components/PendingDonations';
 import { useStealth } from '../lib/stealth/StealthContext';
 import {
   isStealthAddressForUs,
@@ -607,6 +608,11 @@ export default function DashboardPage() {
           >
             {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
           </button>
+        </div>
+
+        {/* Pending Donations - shown when there are queued batch donations */}
+        <div className="mb-6">
+          <PendingDonations />
         </div>
 
         {/* Tabs */}

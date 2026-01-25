@@ -12,8 +12,15 @@
  * - Nullifier prevents double-spending
  */
 
-import { sha256 } from '@noble/hashes/sha256';
-import { randomBytes } from '@noble/hashes/utils';
+// Use Web Crypto API for browser compatibility
+async function sha256(data: Uint8Array): Promise<Uint8Array> {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return new Uint8Array(hashBuffer);
+}
+
+function randomBytes(length: number): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(length));
+}
 
 // Types
 export interface PrivateNote {
@@ -69,14 +76,14 @@ function u64ToBytes(num: number): Uint8Array {
  * @param amountLamports The amount to deposit in lamports
  * @returns PrivateNote containing secrets and commitment
  */
-export function generatePrivateNote(amountLamports: number): PrivateNote {
+export async function generatePrivateNote(amountLamports: number): Promise<PrivateNote> {
   // Generate random secrets
   const secret = randomBytes(32);
   const nullifierSecret = randomBytes(32);
 
   // Compute derived values
-  const secretHash = sha256(secret);
-  const nullifier = sha256(nullifierSecret);
+  const secretHash = await sha256(secret);
+  const nullifier = await sha256(nullifierSecret);
 
   // Compute commitment = hash(secretHash || nullifier || amount)
   const amountBytes = u64ToBytes(amountLamports);
@@ -85,7 +92,7 @@ export function generatePrivateNote(amountLamports: number): PrivateNote {
   preimage.set(nullifier, 32);
   preimage.set(amountBytes, 64);
 
-  const commitment = sha256(preimage);
+  const commitment = await sha256(preimage);
 
   return {
     secret,
@@ -103,13 +110,13 @@ export function generatePrivateNote(amountLamports: number): PrivateNote {
  * Recompute derived values from a note's secrets
  * Used when loading from storage
  */
-export function recomputeNoteValues(
+export async function recomputeNoteValues(
   secret: Uint8Array,
   nullifierSecret: Uint8Array,
   amount: number
-): { secretHash: Uint8Array; nullifier: Uint8Array; commitment: Uint8Array } {
-  const secretHash = sha256(secret);
-  const nullifier = sha256(nullifierSecret);
+): Promise<{ secretHash: Uint8Array; nullifier: Uint8Array; commitment: Uint8Array }> {
+  const secretHash = await sha256(secret);
+  const nullifier = await sha256(nullifierSecret);
 
   const amountBytes = u64ToBytes(amount);
   const preimage = new Uint8Array(72);
@@ -117,7 +124,7 @@ export function recomputeNoteValues(
   preimage.set(nullifier, 32);
   preimage.set(amountBytes, 64);
 
-  const commitment = sha256(preimage);
+  const commitment = await sha256(preimage);
 
   return { secretHash, nullifier, commitment };
 }

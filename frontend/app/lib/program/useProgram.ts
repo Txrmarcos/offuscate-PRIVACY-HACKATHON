@@ -687,7 +687,7 @@ export function useProgram() {
     const { generatePrivateNote, saveNote, toArray32 } = await import('../privacy');
 
     const amountLamports = amountSol * LAMPORTS_PER_SOL;
-    const note = generatePrivateNote(amountLamports);
+    const note = await generatePrivateNote(amountLamports);
 
     // Get the commitment PDA
     const [commitmentPda] = PublicKey.findProgramAddressSync(
