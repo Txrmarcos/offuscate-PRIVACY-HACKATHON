@@ -16,9 +16,13 @@ import path from 'path';
 // Queue storage path
 const QUEUE_FILE = path.join(process.cwd(), '.donation-queue.json');
 
-// Program constants
-const PROGRAM_ID = new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID || '5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq');
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
+// Program constants - using function to avoid build-time errors
+function getProgramId() {
+  return new PublicKey(process.env.NEXT_PUBLIC_getProgramId() || '5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq');
+}
+function getRpcUrl() {
+  return process.env.NEXT_PUBLIC_getRpcUrl() || 'https://api.devnet.solana.com';
+}
 
 // Minimum donations before processing batch (for privacy)
 const MIN_BATCH_SIZE = 2;
@@ -93,11 +97,11 @@ function getRelayerKeypair(): Keypair | null {
 function getPoolPDAs() {
   const [poolPda] = PublicKey.findProgramAddressSync(
     [Buffer.from('privacy_pool')],
-    PROGRAM_ID
+    getProgramId()
   );
   const [poolVaultPda] = PublicKey.findProgramAddressSync(
     [Buffer.from('pool_vault')],
-    PROGRAM_ID
+    getProgramId()
   );
   return { poolPda, poolVaultPda };
 }
@@ -105,7 +109,7 @@ function getPoolPDAs() {
 function getCommitmentPDA(commitment: number[]): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
     [Buffer.from('commitment'), Buffer.from(commitment)],
-    PROGRAM_ID
+    getProgramId()
   );
   return pda;
 }
@@ -113,7 +117,7 @@ function getCommitmentPDA(commitment: number[]): PublicKey {
 function getNullifierPDA(nullifier: number[]): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
     [Buffer.from('nullifier'), Buffer.from(nullifier)],
-    PROGRAM_ID
+    getProgramId()
   );
   return pda;
 }
@@ -227,7 +231,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Setup connection and program
-    const connection = new Connection(RPC_URL, 'confirmed');
+    const connection = new Connection(getRpcUrl(), 'confirmed');
 
     // Check relayer balance
     const relayerBalance = await connection.getBalance(relayerKeypair.publicKey);
