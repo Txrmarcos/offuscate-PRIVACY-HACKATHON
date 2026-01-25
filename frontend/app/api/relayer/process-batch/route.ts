@@ -18,10 +18,10 @@ const QUEUE_FILE = path.join(process.cwd(), '.donation-queue.json');
 
 // Program constants - using function to avoid build-time errors
 function getProgramId() {
-  return new PublicKey(process.env.NEXT_PUBLIC_getProgramId() || '5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq');
+  return new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID || '5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq');
 }
 function getRpcUrl() {
-  return process.env.NEXT_PUBLIC_getRpcUrl() || 'https://api.devnet.solana.com';
+  return process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 }
 
 // Minimum donations before processing batch (for privacy)
