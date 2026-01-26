@@ -12,11 +12,13 @@ import {
   PrivacyPoolData,
   PendingWithdrawData,
   ChurnVaultData,
+  InviteData,
   getCampaignPDAs,
   getStealthRegistryPDA,
   getPrivacyPoolPDAs,
   getPendingWithdrawPDA,
   getChurnVaultPDAs,
+  getInvitePDA,
   fetchVaultBalance as fetchVaultBalanceFn,
   ALLOWED_WITHDRAW_AMOUNTS,
   WITHDRAW_DELAY_SECONDS,
@@ -47,7 +49,9 @@ export function useProgram() {
       commitment: 'confirmed',
     });
 
-    return new Program(idl, provider);
+    // Ensure IDL has the correct program address
+    const idlWithAddress = { ...idl, address: PROGRAM_ID.toBase58() };
+    return new Program(idlWithAddress as Idl, provider);
   }, [connection, wallet]);
 
   // ============================================
@@ -71,6 +75,15 @@ export function useProgram() {
   const fetchCampaign = useCallback(async (campaignId: string): Promise<CampaignData | null> => {
     const { campaignPda } = getCampaignPDAs(campaignId);
 
+    try {
+      const account = await (program.account as any).campaign.fetch(campaignPda);
+      return parseCampaignAccount(account);
+    } catch {
+      return null;
+    }
+  }, [program]);
+
+  const fetchCampaignByPda = useCallback(async (campaignPda: PublicKey): Promise<CampaignData | null> => {
     try {
       const account = await (program.account as any).campaign.fetch(campaignPda);
       return parseCampaignAccount(account);
@@ -235,6 +248,212 @@ export function useProgram() {
       })
       .rpc();
   }, [program, wallet]);
+
+  // ============================================
+  // INVITE OPERATIONS
+  // ============================================
+
+  /**
+   * Generate a random invite code
+   */
+  const generateInviteCode = useCallback((): string => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }, []);
+
+  /**
+   * Create an invite for a recipient to join a payroll batch
+   */
+  const createInvite = useCallback(async (
+    campaignId: string,
+    inviteCode?: string
+  ): Promise<{ signature: string; inviteCode: string }> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const code = inviteCode || generateInviteCode();
+    const { campaignPda } = getCampaignPDAs(campaignId);
+    const { invitePda } = getInvitePDA(code);
+    const { SystemProgram } = await import('@solana/web3.js');
+
+    const signature = await program.methods
+      .createInvite(code)
+      .accounts({
+        owner: wallet.publicKey,
+        campaign: campaignPda,
+        invite: invitePda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    return { signature, inviteCode: code };
+  }, [program, wallet, generateInviteCode]);
+
+  /**
+   * Accept an invite and register stealth address
+   */
+  const acceptInvite = useCallback(async (
+    inviteCode: string,
+    stealthMetaAddress: string
+  ): Promise<string> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { invitePda } = getInvitePDA(inviteCode);
+    const { SystemProgram } = await import('@solana/web3.js');
+
+    return program.methods
+      .acceptInvite(stealthMetaAddress)
+      .accounts({
+        recipient: wallet.publicKey,
+        invite: invitePda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }, [program, wallet]);
+
+  /**
+   * Revoke an invite (only creator can revoke)
+   */
+  const revokeInvite = useCallback(async (inviteCode: string): Promise<string> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { invitePda } = getInvitePDA(inviteCode);
+    const { SystemProgram } = await import('@solana/web3.js');
+
+    return program.methods
+      .revokeInvite()
+      .accounts({
+        owner: wallet.publicKey,
+        invite: invitePda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }, [program, wallet]);
+
+  /**
+   * Fetch an invite by code
+   */
+  const fetchInvite = useCallback(async (inviteCode: string): Promise<InviteData | null> => {
+    const { invitePda } = getInvitePDA(inviteCode);
+
+    try {
+      const account = await (program.account as any).invite.fetch(invitePda);
+      return parseInviteAccount(account);
+    } catch {
+      return null;
+    }
+  }, [program]);
+
+  /**
+   * List all invites for a campaign (batch)
+   */
+  const listInvitesByBatch = useCallback(async (campaignId: string): Promise<InviteData[]> => {
+    const { campaignPda } = getCampaignPDAs(campaignId);
+
+    try {
+      const accounts = await (program.account as any).invite.all([
+        {
+          memcmp: {
+            offset: 8, // After discriminator
+            bytes: campaignPda.toBase58(),
+          },
+        },
+      ]);
+
+      return accounts.map(({ account }: any) => parseInviteAccount(account));
+    } catch (e) {
+      console.error('Failed to list invites:', e);
+      return [];
+    }
+  }, [program]);
+
+  /**
+   * List all invites where connected wallet is the recipient
+   */
+  const listMyInvites = useCallback(async (): Promise<InviteData[]> => {
+    if (!wallet) return [];
+
+    try {
+      // Get all invites and filter by recipient
+      const accounts = await (program.account as any).invite.all();
+      return accounts
+        .map(({ account }: any) => parseInviteAccount(account))
+        .filter((invite: InviteData) =>
+          invite.recipient.toBase58() === wallet.publicKey.toBase58() ||
+          invite.status === 'Pending' // Also show pending invites (anyone can accept)
+        );
+    } catch (e) {
+      console.error('Failed to list my invites:', e);
+      return [];
+    }
+  }, [program, wallet]);
+
+  /**
+   * List all invites created by connected wallet (employer)
+   */
+  const listMyCreatedInvites = useCallback(async (): Promise<InviteData[]> => {
+    if (!wallet) return [];
+
+    try {
+      const accounts = await (program.account as any).invite.all();
+      return accounts
+        .map(({ account }: any) => parseInviteAccount(account))
+        .filter((invite: InviteData) =>
+          invite.creator.toBase58() === wallet.publicKey.toBase58()
+        );
+    } catch (e) {
+      console.error('Failed to list created invites:', e);
+      return [];
+    }
+  }, [program, wallet]);
+
+  /**
+   * Check if user is an employer (owns at least one campaign/batch)
+   */
+  const checkIsEmployer = useCallback(async (): Promise<boolean> => {
+    if (!wallet) return false;
+
+    try {
+      const campaigns = await listCampaigns();
+      return campaigns.some(c => c.account.owner.toBase58() === wallet.publicKey.toBase58());
+    } catch {
+      return false;
+    }
+  }, [wallet, listCampaigns]);
+
+  /**
+   * Check if user is a recipient (has accepted at least one invite)
+   */
+  const checkIsRecipient = useCallback(async (): Promise<boolean> => {
+    if (!wallet) return false;
+
+    try {
+      const accounts = await (program.account as any).invite.all();
+      return accounts.some(({ account }: any) => {
+        const invite = parseInviteAccount(account);
+        return invite.recipient.toBase58() === wallet.publicKey.toBase58() &&
+               invite.status === 'Accepted';
+      });
+    } catch {
+      return false;
+    }
+  }, [program, wallet]);
+
+  /**
+   * Determine user role based on on-chain data
+   */
+  const determineRole = useCallback(async (): Promise<'employer' | 'recipient' | null> => {
+    const isEmployer = await checkIsEmployer();
+    if (isEmployer) return 'employer';
+
+    const isRecipient = await checkIsRecipient();
+    if (isRecipient) return 'recipient';
+
+    return null;
+  }, [checkIsEmployer, checkIsRecipient]);
 
   // ============================================
   // PRIVACY POOL OPERATIONS
@@ -941,6 +1160,7 @@ export function useProgram() {
     // Read operations
     listCampaigns,
     fetchCampaign,
+    fetchCampaignByPda,
     fetchVaultBalance,
     fetchStealthRegistries,
 
@@ -990,12 +1210,26 @@ export function useProgram() {
     MAX_DELAY_SECONDS,
     CHURN_VAULT_COUNT,
 
+    // Invite operations
+    generateInviteCode,
+    createInvite,
+    acceptInvite,
+    revokeInvite,
+    fetchInvite,
+    listInvitesByBatch,
+    listMyInvites,
+    listMyCreatedInvites,
+    checkIsEmployer,
+    checkIsRecipient,
+    determineRole,
+
     // Helpers
     getCampaignPDAs,
     getStealthRegistryPDA,
     getPrivacyPoolPDAs,
     getPendingWithdrawPDA,
     getChurnVaultPDAs,
+    getInvitePDA,
   };
 }
 
@@ -1042,6 +1276,28 @@ function parseStealthRegistryAccount(account: any): StealthRegistryData {
     ephemeralPubKey: account.ephemeralPubKey,
     amount: account.amount.toNumber() / LAMPORTS_PER_SOL,
     timestamp: account.timestamp.toNumber(),
+    bump: account.bump,
+  };
+}
+
+function parseInviteAccount(account: any): InviteData {
+  const statusMap: Record<string, 'Pending' | 'Accepted' | 'Revoked'> = {
+    pending: 'Pending',
+    accepted: 'Accepted',
+    revoked: 'Revoked',
+  };
+
+  const statusKey = Object.keys(account.status)[0];
+
+  return {
+    batch: account.batch,
+    inviteCode: account.inviteCode,
+    creator: account.creator,
+    recipient: account.recipient,
+    recipientStealthAddress: account.recipientStealthAddress,
+    status: statusMap[statusKey] || 'Pending',
+    createdAt: account.createdAt.toNumber(),
+    acceptedAt: account.acceptedAt.toNumber(),
     bump: account.bump,
   };
 }

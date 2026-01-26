@@ -97,6 +97,21 @@ export interface PendingWithdrawData {
   isReady: boolean;
 }
 
+// Invite types
+export type InviteStatus = 'Pending' | 'Accepted' | 'Revoked';
+
+export interface InviteData {
+  batch: PublicKey;
+  inviteCode: string;
+  creator: PublicKey;
+  recipient: PublicKey;
+  recipientStealthAddress: string;
+  status: InviteStatus;
+  createdAt: number;
+  acceptedAt: number;
+  bump: number;
+}
+
 // Allowed withdrawal amounts (must match Anchor program)
 export const ALLOWED_WITHDRAW_AMOUNTS = [0.1, 0.5, 1.0]; // SOL
 
@@ -205,6 +220,17 @@ export function getChurnVaultPDAs(index: number) {
   );
 
   return { churnStatePda, churnVaultPda, stateBump, vaultBump };
+}
+
+/**
+ * Get PDA for invite
+ */
+export function getInvitePDA(inviteCode: string) {
+  const [invitePda, bump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('invite'), Buffer.from(inviteCode)],
+    PROGRAM_ID
+  );
+  return { invitePda, bump };
 }
 
 // ============================================
@@ -814,8 +840,202 @@ export async function fetchStealthRegistries(
 }
 
 // ============================================
+// INVITE OPERATIONS
+// ============================================
+
+/**
+ * Create an invite for a recipient to join a payroll batch
+ */
+export async function createInvite(
+  program: Program,
+  owner: PublicKey,
+  campaignId: string,
+  inviteCode: string
+): Promise<string> {
+  const { campaignPda } = getCampaignPDAs(campaignId);
+  const { invitePda } = getInvitePDA(inviteCode);
+
+  const signature = await program.methods
+    .createInvite(inviteCode)
+    .accounts({
+      owner,
+      campaign: campaignPda,
+      invite: invitePda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Accept an invite and register stealth address
+ */
+export async function acceptInvite(
+  program: Program,
+  recipient: PublicKey,
+  inviteCode: string,
+  stealthMetaAddress: string
+): Promise<string> {
+  const { invitePda } = getInvitePDA(inviteCode);
+
+  const signature = await program.methods
+    .acceptInvite(stealthMetaAddress)
+    .accounts({
+      recipient,
+      invite: invitePda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Revoke an invite (only creator can revoke)
+ */
+export async function revokeInvite(
+  program: Program,
+  owner: PublicKey,
+  inviteCode: string
+): Promise<string> {
+  const { invitePda } = getInvitePDA(inviteCode);
+
+  const signature = await program.methods
+    .revokeInvite()
+    .accounts({
+      owner,
+      invite: invitePda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Fetch an invite by code
+ */
+export async function fetchInvite(
+  program: Program,
+  inviteCode: string
+): Promise<InviteData | null> {
+  const { invitePda } = getInvitePDA(inviteCode);
+
+  try {
+    const account = await (program.account as any).invite.fetch(invitePda);
+    return parseInviteAccount(account);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * List all invites for a campaign (batch)
+ */
+export async function listInvitesByBatch(
+  program: Program,
+  campaignPda: PublicKey
+): Promise<{ pubkey: PublicKey; account: InviteData }[]> {
+  try {
+    const accounts = await (program.account as any).invite.all([
+      {
+        memcmp: {
+          offset: 8, // After discriminator
+          bytes: campaignPda.toBase58(),
+        },
+      },
+    ]);
+
+    return accounts.map(({ publicKey, account }: any) => ({
+      pubkey: publicKey,
+      account: parseInviteAccount(account),
+    }));
+  } catch (e) {
+    console.error('Failed to list invites:', e);
+    return [];
+  }
+}
+
+/**
+ * List all invites where wallet is the recipient
+ */
+export async function listMyInvites(
+  program: Program,
+  recipientWallet: PublicKey
+): Promise<{ pubkey: PublicKey; account: InviteData }[]> {
+  try {
+    const accounts = await (program.account as any).invite.all([
+      {
+        memcmp: {
+          offset: 8 + 32 + (4 + 16) + 32, // batch + invite_code + creator
+          bytes: recipientWallet.toBase58(),
+        },
+      },
+    ]);
+
+    return accounts.map(({ publicKey, account }: any) => ({
+      pubkey: publicKey,
+      account: parseInviteAccount(account),
+    }));
+  } catch (e) {
+    console.error('Failed to list my invites:', e);
+    return [];
+  }
+}
+
+/**
+ * List all invites created by a wallet (employer)
+ */
+export async function listInvitesByCreator(
+  program: Program,
+  creatorWallet: PublicKey
+): Promise<{ pubkey: PublicKey; account: InviteData }[]> {
+  try {
+    const accounts = await (program.account as any).invite.all([
+      {
+        memcmp: {
+          offset: 8 + 32 + (4 + 16), // batch + invite_code
+          bytes: creatorWallet.toBase58(),
+        },
+      },
+    ]);
+
+    return accounts.map(({ publicKey, account }: any) => ({
+      pubkey: publicKey,
+      account: parseInviteAccount(account),
+    }));
+  } catch (e) {
+    console.error('Failed to list invites by creator:', e);
+    return [];
+  }
+}
+
+// ============================================
 // ACCOUNT PARSERS
 // ============================================
+
+function parseInviteAccount(account: any): InviteData {
+  const statusMap: Record<string, InviteStatus> = {
+    pending: 'Pending',
+    accepted: 'Accepted',
+    revoked: 'Revoked',
+  };
+
+  const statusKey = Object.keys(account.status)[0];
+
+  return {
+    batch: account.batch,
+    inviteCode: account.inviteCode,
+    creator: account.creator,
+    recipient: account.recipient,
+    recipientStealthAddress: account.recipientStealthAddress,
+    status: statusMap[statusKey] || 'Pending',
+    createdAt: account.createdAt.toNumber(),
+    acceptedAt: account.acceptedAt.toNumber(),
+    bump: account.bump,
+  };
+}
 
 function parseCampaignAccount(account: any): CampaignData {
   const statusMap: Record<string, 'Active' | 'Closed' | 'Completed'> = {

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Shield,
-  Shuffle,
+  Building2,
   Lock,
   Clock,
   Zap,
@@ -22,6 +22,7 @@ import {
   Binary,
   Info,
   Hash,
+  DollarSign,
 } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
@@ -36,11 +37,11 @@ import { FullScreenPrivacyAnimation } from '../components/PrivacyGraphAnimation'
 
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 
-type ActiveTab = 'mix' | 'send';
+type ActiveTab = 'settle' | 'pay';
 type SourceWallet = 'main' | 'stealth';
 type PrivacyMode = 'zk' | 'direct';
 
-export default function MixerPage() {
+export default function TreasuryPage() {
   const { connected, publicKey, signTransaction } = useWallet();
   const { setVisible } = useWalletModal();
   const { stealthKeys, metaAddressString, isLoading: keysLoading, deriveKeysFromWallet } = useStealth();
@@ -53,7 +54,7 @@ export default function MixerPage() {
   } = useProgram();
 
   // State
-  const [activeTab, setActiveTab] = useState<ActiveTab>('mix');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('settle');
   const [sourceWallet, setSourceWallet] = useState<SourceWallet>('main');
   const [privacyMode, setPrivacyMode] = useState<PrivacyMode>('zk');
   const [processing, setProcessing] = useState<string | null>(null);
@@ -69,12 +70,12 @@ export default function MixerPage() {
   const [poolStats, setPoolStats] = useState<any>(null);
   const [privateNotes, setPrivateNotes] = useState<PrivateNote[]>([]);
 
-  // Stealth keypair
-  const [stealthKeypair, setStealthKeypair] = useState<Keypair | null>(null);
+  // Private keypair for recipient wallet
+  const [privateKeypair, setPrivateKeypair] = useState<Keypair | null>(null);
 
-  // Send form
+  // Payment form
   const [recipientAddress, setRecipientAddress] = useState('');
-  const [sendAmount, setSendAmount] = useState('0.1');
+  const [paymentAmount, setPaymentAmount] = useState('0.1');
 
   // Animation state
   const [showAnimation, setShowAnimation] = useState(false);
@@ -84,7 +85,7 @@ export default function MixerPage() {
     amount: string;
   } | null>(null);
 
-  // Generate deterministic stealth keypair
+  // Generate deterministic private keypair
   useEffect(() => {
     const generateKeypair = async () => {
       if (!publicKey) return;
@@ -95,9 +96,9 @@ export default function MixerPage() {
           .update('privacy_pool_stealth_v1')
           .digest();
         const keypair = Keypair.fromSeed(seed.slice(0, 32));
-        setStealthKeypair(keypair);
+        setPrivateKeypair(keypair);
       } catch (err) {
-        console.error('Failed to derive stealth keypair:', err);
+        console.error('Failed to derive private keypair:', err);
       }
     };
     generateKeypair();
@@ -114,9 +115,9 @@ export default function MixerPage() {
       setMainBalance(balance / LAMPORTS_PER_SOL);
     } catch {}
 
-    if (stealthKeypair) {
+    if (privateKeypair) {
       try {
-        const balance = await connection.getBalance(stealthKeypair.publicKey);
+        const balance = await connection.getBalance(privateKeypair.publicKey);
         setStealthBalance(balance / LAMPORTS_PER_SOL);
       } catch {}
     }
@@ -127,7 +128,7 @@ export default function MixerPage() {
       const notes = await getUnspentPrivateNotes();
       setPrivateNotes(notes);
     } catch {}
-  }, [publicKey, stealthKeypair, fetchPoolStats, getUnspentPrivateNotes]);
+  }, [publicKey, privateKeypair, fetchPoolStats, getUnspentPrivateNotes]);
 
   useEffect(() => {
     refreshData();
@@ -140,54 +141,54 @@ export default function MixerPage() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  // Deposit to mixer
-  const handleDeposit = async (amount: number) => {
+  // Fund payroll pool
+  const handleFundPool = async (amount: number) => {
     setProcessing('deposit');
     setError(null);
     setSuccess(null);
     try {
       const { signature } = await privateDeposit(amount);
       setTxSignature(signature);
-      setSuccess(`Deposited ${amount} SOL to mixer`);
+      setSuccess(`Added ${amount} SOL to payroll pool`);
       triggerOffuscation();
       await refreshData();
     } catch (err: any) {
-      setError(err.message || 'Deposit failed');
+      setError(err.message || 'Funding failed');
     } finally {
       setProcessing(null);
     }
   };
 
-  // Withdraw all to stealth
-  const handleWithdrawToStealth = async () => {
-    if (!stealthKeypair || privateNotes.length === 0) return;
+  // Settle to private wallet
+  const handlePrivateSettlement = async () => {
+    if (!privateKeypair || privateNotes.length === 0) return;
     setProcessing('withdraw');
     setError(null);
     setSuccess(null);
     try {
-      const results = await quickWithdrawAllToStealth(stealthKeypair);
+      const results = await quickWithdrawAllToStealth(privateKeypair);
       if (results.length > 0) {
         const totalAmount = results.reduce((acc, r) => acc + (r.note.amount / LAMPORTS_PER_SOL), 0);
         setTxSignature(results[results.length - 1].signature);
-        setSuccess(`Withdrew ${totalAmount.toFixed(2)} SOL to stealth wallet`);
+        setSuccess(`Settled ${totalAmount.toFixed(2)} SOL to private wallet`);
         triggerOffuscation();
       }
       await refreshData();
     } catch (err: any) {
-      setError(err.message || 'Withdrawal failed');
+      setError(err.message || 'Settlement failed');
     } finally {
       setProcessing(null);
     }
   };
 
   // Send payment
-  const handleSend = async () => {
+  const handlePayment = async () => {
     if (!publicKey || !signTransaction) {
       setVisible(true);
       return;
     }
 
-    const amount = parseFloat(sendAmount);
+    const amount = parseFloat(paymentAmount);
     if (isNaN(amount) || amount <= 0) {
       setError('Invalid amount');
       return;
@@ -216,11 +217,11 @@ export default function MixerPage() {
       if (privacyMode === 'zk') {
         // ZK Compressed transfer via Light Protocol
         const lightWallet: LightWallet = {
-          publicKey: sourceWallet === 'main' ? publicKey : stealthKeypair!.publicKey,
+          publicKey: sourceWallet === 'main' ? publicKey : privateKeypair!.publicKey,
           signTransaction: sourceWallet === 'main'
             ? signTransaction as any
             : async (tx: Transaction) => {
-                tx.sign(stealthKeypair!);
+                tx.sign(privateKeypair!);
                 return tx;
               },
         };
@@ -228,21 +229,21 @@ export default function MixerPage() {
         const result = await privateZKDonation(lightWallet, recipient, amount);
 
         if (!result.success) {
-          throw new Error(result.error || 'ZK transfer failed');
+          throw new Error(result.error || 'Private payment failed');
         }
 
         setAnimationData({
           privacyLevel: 'ZK_COMPRESSED',
           txSignature: result.signature!,
-          amount: sendAmount,
+          amount: paymentAmount,
         });
         setShowAnimation(true);
         triggerOffuscation();
 
       } else {
-        // Direct transfer
-        const senderKeypair = sourceWallet === 'stealth' ? stealthKeypair : null;
-        const senderPubkey = sourceWallet === 'main' ? publicKey : stealthKeypair!.publicKey;
+        // Standard transfer
+        const senderKeypair = sourceWallet === 'stealth' ? privateKeypair : null;
+        const senderPubkey = sourceWallet === 'main' ? publicKey : privateKeypair!.publicKey;
 
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
         const tx = new Transaction({
@@ -273,28 +274,28 @@ export default function MixerPage() {
         setAnimationData({
           privacyLevel: 'PUBLIC',
           txSignature: signature,
-          amount: sendAmount,
+          amount: paymentAmount,
         });
         setShowAnimation(true);
       }
 
       await refreshData();
     } catch (err: any) {
-      setError(err.message || 'Transfer failed');
+      setError(err.message || 'Payment failed');
     } finally {
       setProcessing(null);
     }
   };
 
   // Transfer between wallets
-  const handleTransferBetweenWallets = async (direction: 'toStealth' | 'toMain') => {
-    if (!publicKey || !stealthKeypair) return;
+  const handleTransferBetweenWallets = async (direction: 'toPrivate' | 'toMain') => {
+    if (!publicKey || !privateKeypair) return;
 
     const connection = new Connection(RPC_URL, 'confirmed');
-    const fromKeypair = direction === 'toStealth' ? null : stealthKeypair;
-    const fromPubkey = direction === 'toStealth' ? publicKey : stealthKeypair.publicKey;
-    const toPubkey = direction === 'toStealth' ? stealthKeypair.publicKey : publicKey;
-    const balance = direction === 'toStealth' ? mainBalance : stealthBalance;
+    const fromKeypair = direction === 'toPrivate' ? null : privateKeypair;
+    const fromPubkey = direction === 'toPrivate' ? publicKey : privateKeypair.publicKey;
+    const toPubkey = direction === 'toPrivate' ? privateKeypair.publicKey : publicKey;
+    const balance = direction === 'toPrivate' ? mainBalance : stealthBalance;
 
     if (balance <= 0.001) {
       setError('Insufficient balance');
@@ -349,7 +350,7 @@ export default function MixerPage() {
     setShowAnimation(false);
     setAnimationData(null);
     setRecipientAddress('');
-    setSendAmount('0.1');
+    setPaymentAmount('0.1');
   };
 
   // Show animation
@@ -370,14 +371,14 @@ export default function MixerPage() {
       <div className="min-h-screen px-6 py-24 flex items-center justify-center">
         <div className="max-w-md mx-auto text-center">
           <div className="w-24 h-24 mx-auto mb-8 rounded-[2.25rem] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
-            <Shuffle className="w-10 h-10 text-white/60" />
+            <Building2 className="w-10 h-10 text-white/60" />
           </div>
-          <h1 className="text-4xl font-black tracking-tighter text-white mb-4">ShadowMix</h1>
+          <h1 className="text-4xl font-black tracking-tighter text-white mb-4">Treasury</h1>
           <p className="text-white/40 text-lg mb-3">
-            Break the link between your wallets.
+            Private treasury operations for enterprises.
           </p>
           <p className="text-white/25 text-sm mb-8">
-            Move funds without leaving a trace. Your transactions, your privacy.
+            Fund pools, settle payments, and manage treasury without exposing activity on-chain.
           </p>
           <button
             onClick={() => setVisible(true)}
@@ -390,7 +391,7 @@ export default function MixerPage() {
     );
   }
 
-  // Loading stealth keys
+  // Loading keys
   if (!stealthKeys && !keysLoading) {
     return (
       <div className="min-h-screen px-6 py-24 flex items-center justify-center">
@@ -400,7 +401,7 @@ export default function MixerPage() {
           </div>
           <h1 className="text-4xl font-black tracking-tighter text-white mb-4">Setup Privacy</h1>
           <p className="text-white/40 text-lg mb-8">
-            Generate stealth keys for private operations.
+            Generate cryptographic keys for private treasury operations.
           </p>
           <button
             onClick={deriveKeysFromWallet}
@@ -424,12 +425,12 @@ export default function MixerPage() {
           <div>
             <div className="flex items-center gap-3 mb-2">
               <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
-                <Shuffle className="w-5 h-5 text-white/60" />
+                <Building2 className="w-5 h-5 text-white/60" />
               </div>
-              <h1 className="text-3xl font-bold text-white">ShadowMix</h1>
+              <h1 className="text-3xl font-bold text-white">Treasury</h1>
             </div>
             <p className="text-white/40 text-sm">
-              Move funds invisibly. Nobody can connect your wallets.
+              Private settlements and treasury operations.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -457,27 +458,27 @@ export default function MixerPage() {
                 <Hash className="w-5 h-5 text-white/40" />
               </div>
               <div className="flex-1">
-                <h3 className="text-white font-medium mb-2">Commitment-Based Privacy</h3>
+                <h3 className="text-white font-medium mb-2">Private Settlement System</h3>
                 <p className="text-white/40 text-sm mb-4">
-                  Each deposit creates a cryptographic <strong className="text-white/60">commitment</strong> that includes the amount.
-                  Only you have the secret to withdraw your exact deposit. Nobody can steal your funds.
+                  Each deposit creates a cryptographic <strong className="text-white/60">commitment</strong> that only you can claim.
+                  Funds are pooled and settled privately, breaking the on-chain link between treasury and recipients.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                   <div className="p-3 bg-white/[0.02] rounded-lg">
-                    <p className="text-white/60 font-medium mb-1">Deposit</p>
-                    <p className="text-white/30">commitment = hash(secret + amount)</p>
+                    <p className="text-white/60 font-medium mb-1">Fund Pool</p>
+                    <p className="text-white/30">Create private commitment</p>
                   </div>
                   <div className="p-3 bg-white/[0.02] rounded-lg">
-                    <p className="text-white/60 font-medium mb-1">Pool</p>
-                    <p className="text-white/30">All deposits mixed together</p>
+                    <p className="text-white/60 font-medium mb-1">Payroll Pool</p>
+                    <p className="text-white/30">Funds aggregated privately</p>
                   </div>
                   <div className="p-3 bg-white/[0.02] rounded-lg">
-                    <p className="text-white/60 font-medium mb-1">Withdraw</p>
-                    <p className="text-white/30">Prove secret → get exact amount</p>
+                    <p className="text-white/60 font-medium mb-1">Settlement</p>
+                    <p className="text-white/30">Claim to private wallet</p>
                   </div>
                 </div>
                 <p className="text-white/30 text-xs mt-3">
-                  Standardized amounts (0.1, 0.5, 1.0 SOL) increase the anonymity set.
+                  Standardized amounts (0.1, 0.5, 1.0 SOL) maximize the anonymity set.
                 </p>
               </div>
             </div>
@@ -486,7 +487,7 @@ export default function MixerPage() {
 
         {/* Wallet Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {/* Main Wallet */}
+          {/* Treasury Wallet */}
           <div
             className={`p-5 rounded-2xl border transition-all cursor-pointer ${
               sourceWallet === 'main'
@@ -498,7 +499,7 @@ export default function MixerPage() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Wallet className="w-4 h-4 text-white/40" />
-                <span className="text-xs text-white/40">Main Wallet</span>
+                <span className="text-xs text-white/40">Treasury Wallet</span>
               </div>
               {sourceWallet === 'main' && (
                 <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] text-white/60">ACTIVE</span>
@@ -523,7 +524,7 @@ export default function MixerPage() {
             </div>
           </div>
 
-          {/* Stealth Wallet */}
+          {/* Private Operations Wallet */}
           <div
             className={`p-5 rounded-2xl border transition-all cursor-pointer ${
               sourceWallet === 'stealth'
@@ -535,7 +536,7 @@ export default function MixerPage() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <EyeOff className="w-4 h-4 text-white/40" />
-                <span className="text-xs text-white/40">Stealth Wallet</span>
+                <span className="text-xs text-white/40">Private Wallet</span>
               </div>
               {sourceWallet === 'stealth' && (
                 <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] text-white/60">ACTIVE</span>
@@ -546,12 +547,12 @@ export default function MixerPage() {
             </p>
             <div className="flex items-center gap-2">
               <p className="text-xs text-white/20 font-mono truncate flex-1">
-                {stealthKeypair?.publicKey.toBase58()}
+                {privateKeypair?.publicKey.toBase58()}
               </p>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleCopy(stealthKeypair?.publicKey.toBase58() || '', 'stealth');
+                  handleCopy(privateKeypair?.publicKey.toBase58() || '', 'stealth');
                 }}
                 className="text-white/20 hover:text-white/40"
               >
@@ -564,12 +565,12 @@ export default function MixerPage() {
         {/* Quick transfer between wallets */}
         <div className="flex items-center justify-center gap-4 mb-8">
           <button
-            onClick={() => handleTransferBetweenWallets('toStealth')}
-            disabled={processing === 'toStealth' || mainBalance <= 0.001}
+            onClick={() => handleTransferBetweenWallets('toPrivate')}
+            disabled={processing === 'toPrivate' || mainBalance <= 0.001}
             className="px-4 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-xs text-white/50 hover:text-white hover:bg-white/[0.05] transition-all disabled:opacity-30 flex items-center gap-2"
           >
-            {processing === 'toStealth' ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
-            Main → Stealth
+            {processing === 'toPrivate' ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
+            Treasury → Private
           </button>
           <button
             onClick={() => handleTransferBetweenWallets('toMain')}
@@ -577,64 +578,64 @@ export default function MixerPage() {
             className="px-4 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-xs text-white/50 hover:text-white hover:bg-white/[0.05] transition-all disabled:opacity-30 flex items-center gap-2"
           >
             {processing === 'toMain' ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3 rotate-180" />}
-            Stealth → Main
+            Private → Treasury
           </button>
         </div>
 
         {/* Tabs */}
         <div className="flex items-center gap-1 p-1 bg-white/[0.02] border border-white/[0.06] rounded-xl mb-6 w-fit">
           <button
-            onClick={() => setActiveTab('mix')}
+            onClick={() => setActiveTab('settle')}
             className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'mix'
+              activeTab === 'settle'
                 ? 'bg-white text-black'
                 : 'text-white/40 hover:text-white'
             }`}
           >
             <span className="flex items-center gap-2">
-              <Shuffle className="w-4 h-4" />
-              Mix
+              <Shield className="w-4 h-4" />
+              Private Settlement
             </span>
           </button>
           <button
-            onClick={() => setActiveTab('send')}
+            onClick={() => setActiveTab('pay')}
             className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'send'
+              activeTab === 'pay'
                 ? 'bg-white text-black'
                 : 'text-white/40 hover:text-white'
             }`}
           >
             <span className="flex items-center gap-2">
               <Send className="w-4 h-4" />
-              Send
+              Pay
             </span>
           </button>
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'mix' && (
+        {activeTab === 'settle' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Step 1: Deposit */}
+            {/* Step 1: Fund Pool */}
             <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-white/[0.05] flex items-center justify-center">
                   <span className="text-white/60 font-bold text-sm">1</span>
                 </div>
                 <div>
-                  <h3 className="text-white font-medium">Deposit to Mixer</h3>
-                  <p className="text-white/30 text-xs">From your main wallet</p>
+                  <h3 className="text-white font-medium">Fund Payroll Pool</h3>
+                  <p className="text-white/30 text-xs">From treasury wallet</p>
                 </div>
               </div>
 
               <p className="text-white/40 text-sm mb-4">
-                Deposit SOL into the privacy pool. Use standardized amounts for maximum anonymity.
+                Add funds to the payroll pool. Standardized amounts increase privacy.
               </p>
 
               <div className="grid grid-cols-3 gap-2 mb-4">
                 {ALLOWED_WITHDRAW_AMOUNTS.map((amt) => (
                   <button
                     key={amt}
-                    onClick={() => handleDeposit(amt)}
+                    onClick={() => handleFundPool(amt)}
                     disabled={processing === 'deposit' || mainBalance < amt}
                     className="py-3 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] rounded-xl text-white font-medium transition-all disabled:opacity-30"
                   >
@@ -649,11 +650,11 @@ export default function MixerPage() {
 
               <div className="flex items-center gap-2 text-xs text-white/30">
                 <Clock className="w-3 h-3" />
-                <span>Variable delay: 30s - 5min</span>
+                <span>Settlement delay: 30s - 5min</span>
               </div>
             </div>
 
-            {/* Step 2: Withdraw */}
+            {/* Step 2: Settle */}
             <div className={`p-6 rounded-2xl border ${
               privateNotes.length > 0
                 ? 'bg-white/[0.03] border-white/[0.1]'
@@ -666,20 +667,20 @@ export default function MixerPage() {
                   <span className={`font-bold text-sm ${privateNotes.length > 0 ? 'text-white' : 'text-white/30'}`}>2</span>
                 </div>
                 <div>
-                  <h3 className="text-white font-medium">Withdraw to Stealth</h3>
-                  <p className="text-white/30 text-xs">To a new unlinked wallet</p>
+                  <h3 className="text-white font-medium">Settle to Private Wallet</h3>
+                  <p className="text-white/30 text-xs">Unlinked from treasury</p>
                 </div>
               </div>
 
               {privateNotes.length > 0 ? (
                 <>
                   <div className="flex items-center justify-between mb-4 p-3 bg-white/[0.03] rounded-lg">
-                    <span className="text-white/50 text-sm">Available to withdraw</span>
+                    <span className="text-white/50 text-sm">Ready to settle</span>
                     <span className="text-white font-mono font-bold">{totalNoteBalance.toFixed(2)} SOL</span>
                   </div>
 
                   <button
-                    onClick={handleWithdrawToStealth}
+                    onClick={handlePrivateSettlement}
                     disabled={processing === 'withdraw'}
                     className="w-full py-3 bg-white hover:bg-white/90 text-black font-medium rounded-xl transition-all flex items-center justify-center gap-2"
                   >
@@ -688,77 +689,37 @@ export default function MixerPage() {
                     ) : (
                       <>
                         <Zap className="w-4 h-4" />
-                        Withdraw to Stealth Wallet
+                        Execute Settlement
                       </>
                     )}
                   </button>
 
                   <p className="text-[11px] text-white/30 text-center mt-3">
-                    Your stealth wallet is not linked to your main wallet on-chain
+                    Private wallet is not linked to your treasury on-chain
                   </p>
                 </>
               ) : (
                 <div className="text-center py-6">
-                  <Shuffle className="w-8 h-8 mx-auto mb-3 text-white/10" />
-                  <p className="text-white/30 text-sm">No deposits yet</p>
-                  <p className="text-white/20 text-xs mt-1">Deposit SOL to start mixing</p>
+                  <Shield className="w-8 h-8 mx-auto mb-3 text-white/10" />
+                  <p className="text-white/30 text-sm">No pending settlements</p>
+                  <p className="text-white/20 text-xs mt-1">Fund the pool to begin</p>
                 </div>
               )}
             </div>
 
-            {/* Pool Stats */}
-            {poolStats && (
-              <div className="lg:col-span-2 grid grid-cols-3 gap-4">
-                {[
-                  { label: 'POOL BALANCE', value: poolStats.currentBalance?.toFixed(2) || '0.00', unit: 'SOL' },
-                  { label: 'TOTAL MIXED', value: poolStats.totalDeposited?.toFixed(2) || '0.00', unit: 'SOL' },
-                  { label: 'TRANSACTIONS', value: (poolStats.depositCount || 0) + (poolStats.withdrawCount || 0), unit: '' },
-                ].map(({ label, value, unit }) => (
-                  <div key={label} className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05]">
-                    <p className="text-[10px] text-white/25 tracking-wide mb-1">{label}</p>
-                    <p className="text-lg font-mono text-white">
-                      {value} {unit && <span className="text-sm text-white/30">{unit}</span>}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* How it works */}
-            <div className="lg:col-span-2 p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-              <h4 className="text-white/60 text-sm font-medium mb-4">Privacy Flow</h4>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {[
-                  { icon: Wallet, title: 'Deposit', desc: 'Send SOL with ZK commitment' },
-                  { icon: Clock, title: 'Wait', desc: 'Variable delay for privacy' },
-                  { icon: Shuffle, title: 'Mix', desc: 'Funds mixed with others' },
-                  { icon: EyeOff, title: 'Withdraw', desc: 'Receive on stealth wallet' },
-                ].map((step, i) => (
-                  <div key={i} className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-white/[0.05] flex items-center justify-center flex-shrink-0">
-                      <step.icon className="w-4 h-4 text-white/40" />
-                    </div>
-                    <div>
-                      <p className="text-white text-sm font-medium">{step.title}</p>
-                      <p className="text-white/30 text-xs">{step.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 
-        {activeTab === 'send' && (
+        {activeTab === 'pay' && (
           <div className="max-w-xl">
             <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
-              <h3 className="text-white font-medium mb-4">Send Payment</h3>
+              <h3 className="text-white font-medium mb-4">Private Payment</h3>
 
               {/* Source wallet indicator */}
               <div className="mb-4 p-3 bg-white/[0.03] rounded-lg flex items-center justify-between">
-                <span className="text-white/40 text-sm">Sending from</span>
+                <span className="text-white/40 text-sm">Paying from</span>
                 <span className="text-white font-medium">
-                  {sourceWallet === 'main' ? 'Main Wallet' : 'Stealth Wallet'} ({activeWalletBalance.toFixed(4)} SOL)
+                  {sourceWallet === 'main' ? 'Treasury' : 'Private Wallet'} ({activeWalletBalance.toFixed(4)} SOL)
                 </span>
               </div>
 
@@ -784,8 +745,8 @@ export default function MixerPage() {
                 <div className="relative">
                   <input
                     type="number"
-                    value={sendAmount}
-                    onChange={(e) => setSendAmount(e.target.value)}
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
                     placeholder="0.00"
                     step="0.01"
                     min="0.001"
@@ -795,9 +756,9 @@ export default function MixerPage() {
                     {['0.1', '0.5', '1'].map((val) => (
                       <button
                         key={val}
-                        onClick={() => setSendAmount(val)}
+                        onClick={() => setPaymentAmount(val)}
                         className={`px-2.5 py-1 text-xs rounded-lg transition-all ${
-                          sendAmount === val
+                          paymentAmount === val
                             ? 'bg-white text-black'
                             : 'bg-white/[0.05] text-white/40 hover:text-white'
                         }`}
@@ -812,7 +773,7 @@ export default function MixerPage() {
               {/* Privacy mode */}
               <div className="mb-6">
                 <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-2">
-                  Privacy Mode
+                  Privacy Level
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -824,8 +785,8 @@ export default function MixerPage() {
                     }`}
                   >
                     <Binary className={`w-5 h-5 mb-2 ${privacyMode === 'zk' ? 'text-white' : 'text-white/30'}`} />
-                    <p className="text-white font-medium text-sm">ZK Private</p>
-                    <p className="text-white/40 text-xs">Light Protocol - sender unlinked</p>
+                    <p className="text-white font-medium text-sm">Maximum Privacy</p>
+                    <p className="text-white/40 text-xs">ZK protected - sender unlinkable</p>
                   </button>
                   <button
                     onClick={() => setPrivacyMode('direct')}
@@ -836,27 +797,27 @@ export default function MixerPage() {
                     }`}
                   >
                     <Eye className={`w-5 h-5 mb-2 ${privacyMode === 'direct' ? 'text-white' : 'text-white/30'}`} />
-                    <p className="text-white font-medium text-sm">Direct</p>
-                    <p className="text-white/40 text-xs">Standard transfer - visible</p>
+                    <p className="text-white font-medium text-sm">Standard</p>
+                    <p className="text-white/40 text-xs">Direct transfer - visible</p>
                   </button>
                 </div>
               </div>
 
-              {/* Send button */}
+              {/* Pay button */}
               <button
-                onClick={handleSend}
-                disabled={processing === 'send' || !recipientAddress || parseFloat(sendAmount) <= 0}
+                onClick={handlePayment}
+                disabled={processing === 'send' || !recipientAddress || parseFloat(paymentAmount) <= 0}
                 className="w-full py-4 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {processing === 'send' ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    {privacyMode === 'zk' ? 'Creating ZK Proof...' : 'Sending...'}
+                    {privacyMode === 'zk' ? 'Creating ZK Proof...' : 'Processing...'}
                   </>
                 ) : (
                   <>
                     <Send className="w-4 h-4" />
-                    Send {sendAmount} SOL
+                    Pay {paymentAmount} SOL
                   </>
                 )}
               </button>
@@ -865,8 +826,8 @@ export default function MixerPage() {
               {sourceWallet === 'stealth' && privacyMode === 'zk' && (
                 <div className="mt-4 p-3 bg-white/[0.03] border border-white/[0.08] rounded-lg">
                   <p className="text-xs text-white/50">
-                    <strong className="text-white/70">Maximum privacy:</strong> Sending from stealth wallet with ZK proofs.
-                    Your main wallet is never linked to this transaction.
+                    <strong className="text-white/70">Maximum privacy:</strong> Paying from private wallet with ZK proofs.
+                    Your treasury is never linked to this payment.
                   </p>
                 </div>
               )}

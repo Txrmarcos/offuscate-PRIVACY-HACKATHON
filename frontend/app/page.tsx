@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield,
@@ -10,23 +11,35 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  Heart,
-  Shuffle,
-  Send,
+  Briefcase,
+  Building2,
   Users,
-  Coins,
-  Code,
-  Binary,
   Wallet,
   ArrowLeftRight,
+  Binary,
+  CheckCircle,
+  FileText,
+  TrendingUp,
+  DollarSign,
+  Link as LinkIcon,
 } from 'lucide-react';
 import { Globe } from './components/ui/Globe';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useRole } from './lib/role';
 
-const rotatingWords = ['Untraceable', 'Private', 'Anonymous', 'Protected'];
+const rotatingWords = ['Private', 'Confidential', 'Protected', 'Secure'];
 
 export default function Home() {
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [mounted, setMounted] = useState(false);
+  const [showUserMessage, setShowUserMessage] = useState(false);
+  const [pendingCompanyRedirect, setPendingCompanyRedirect] = useState(false);
+
+  const router = useRouter();
+  const { connected } = useWallet();
+  const { setVisible } = useWalletModal();
+  const { setRole } = useRole();
 
   useEffect(() => {
     setMounted(true);
@@ -35,6 +48,25 @@ export default function Home() {
     }, 2500);
     return () => clearInterval(interval);
   }, []);
+
+  const handleCompanyClick = () => {
+    if (connected) {
+      setRole('employer');
+      router.push('/explore');
+    } else {
+      setPendingCompanyRedirect(true);
+      setVisible(true);
+    }
+  };
+
+  // Redirect to explore after connecting (if company button was clicked)
+  useEffect(() => {
+    if (connected && pendingCompanyRedirect) {
+      setPendingCompanyRedirect(false);
+      setRole('employer');
+      router.push('/explore');
+    }
+  }, [connected, pendingCompanyRedirect, router, setRole]);
 
   return (
     <div className="min-h-screen flex flex-col overflow-hidden">
@@ -81,7 +113,7 @@ export default function Home() {
           >
             <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
             <span className="text-xs text-white/50 uppercase tracking-widest">
-              Privacy Infrastructure on Solana
+              Enterprise Privacy Infrastructure
             </span>
           </motion.div>
 
@@ -92,20 +124,9 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
           >
-            <span className="text-white">Your Transactions.</span>
+            <span className="text-white">Private Payroll & Payments</span>
             <br />
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={currentWordIndex}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.4 }}
-                className="inline-block bg-gradient-to-r from-white via-white/90 to-white/70 bg-clip-text text-transparent"
-              >
-                {rotatingWords[currentWordIndex]}.
-              </motion.span>
-            </AnimatePresence>
+            <span className="text-white/60">on Solana</span>
           </motion.h1>
 
           {/* Subtitle */}
@@ -115,105 +136,53 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
           >
-            Move money without being watched. On Solana.
+            Pay employees, contributors and suppliers without exposing salaries,
+            payouts or treasury activity on-chain.
           </motion.p>
 
-          {/* TWO MAIN PRODUCTS - Clear Cards */}
+          {/* Two Round Buttons */}
           <motion.div
-            className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto mb-16"
+            className="flex flex-col items-center gap-6 mb-16"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
           >
-            {/* DONATE PRIVATELY */}
-            <Link href="/explore" className="group block">
-              <div className="relative h-full p-8 rounded-3xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/[0.08] hover:border-white/[0.15] transition-all hover:scale-[1.02] active:scale-[0.98]">
-                {/* Icon */}
-                <div className="w-16 h-16 rounded-2xl bg-white/[0.08] flex items-center justify-center mb-6 group-hover:bg-white/[0.12] transition-colors">
-                  <Heart className="w-8 h-8 text-white" />
-                </div>
+            <div className="flex items-center justify-center gap-4">
+              {/* Company - White Button */}
+              <button
+                onClick={handleCompanyClick}
+                className="w-14 h-14 rounded-full bg-white flex items-center justify-center hover:bg-white/90 transition-all hover:scale-110 active:scale-95"
+                title="Company"
+              >
+                <Building2 className="w-6 h-6 text-black" />
+              </button>
 
-                {/* Title */}
-                <h2 className="text-2xl font-bold text-white mb-2">
-                  Donate Privately
-                </h2>
+              {/* User - Gray Button */}
+              <button
+                onClick={() => setShowUserMessage(true)}
+                className="w-14 h-14 rounded-full bg-white/[0.1] border border-white/[0.15] flex items-center justify-center hover:bg-white/[0.2] transition-all hover:scale-110 active:scale-95"
+                title="User"
+              >
+                <Users className="w-6 h-6 text-white" />
+              </button>
+            </div>
 
-                {/* Description */}
-                <p className="text-white/50 mb-6 leading-relaxed">
-                  Support campaigns and causes without exposing your wallet. Your identity stays hidden.
-                </p>
-
-                {/* Features */}
-                <div className="space-y-2 mb-6">
-                  {[
-                    'Fund causes anonymously',
-                    'Protect sensitive donations',
-                    'ZK proofs hide your identity',
-                  ].map((feature, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm text-white/40">
-                      <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
-                      <span>{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* CTA */}
-                <div className="flex items-center gap-2 text-white font-medium group-hover:gap-3 transition-all">
-                  <span>Browse Campaigns</span>
-                  <ArrowRight className="w-4 h-4" />
-                </div>
-
-                {/* Badge */}
-                <div className="absolute top-6 right-6 px-3 py-1 rounded-full bg-white/[0.05] border border-white/[0.08]">
-                  <span className="text-[10px] text-white/50 uppercase tracking-wider">Crowdfunding</span>
-                </div>
-              </div>
-            </Link>
-
-            {/* TRANSFER PRIVATELY */}
-            <Link href="/mixer" className="group block">
-              <div className="relative h-full p-8 rounded-3xl bg-gradient-to-br from-white/[0.04] to-transparent border border-white/[0.06] hover:border-white/[0.12] transition-all hover:scale-[1.02] active:scale-[0.98]">
-                {/* Icon */}
-                <div className="w-16 h-16 rounded-2xl bg-white/[0.05] flex items-center justify-center mb-6 group-hover:bg-white/[0.08] transition-colors">
-                  <Shuffle className="w-8 h-8 text-white/80" />
-                </div>
-
-                {/* Title */}
-                <h2 className="text-2xl font-bold text-white mb-2">
-                  Transfer Privately
-                </h2>
-
-                {/* Description */}
-                <p className="text-white/50 mb-6 leading-relaxed">
-                  Move SOL between wallets without leaving a trace. Break the on-chain link.
-                </p>
-
-                {/* Features */}
-                <div className="space-y-2 mb-6">
-                  {[
-                    'Wallet to wallet, untraceable',
-                    'Mix funds with others',
-                    'Stealth addresses included',
-                  ].map((feature, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm text-white/40">
-                      <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
-                      <span>{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* CTA */}
-                <div className="flex items-center gap-2 text-white/80 font-medium group-hover:gap-3 group-hover:text-white transition-all">
-                  <span>Open ShadowMix</span>
-                  <ArrowRight className="w-4 h-4" />
-                </div>
-
-                {/* Badge */}
-                <div className="absolute top-6 right-6 px-3 py-1 rounded-full bg-white/[0.03] border border-white/[0.06]">
-                  <span className="text-[10px] text-white/40 uppercase tracking-wider">Personal</span>
-                </div>
-              </div>
-            </Link>
+            {/* User Message */}
+            <AnimatePresence>
+              {showUserMessage && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.05] border border-white/[0.1]"
+                >
+                  <LinkIcon className="w-4 h-4 text-white/50" />
+                  <span className="text-sm text-white/60">
+                    Recipients enter via invite link from employer
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
 
           {/* Quick explanation */}
@@ -224,8 +193,8 @@ export default function Home() {
             transition={{ delay: 0.7 }}
           >
             <p className="text-white/25 text-sm max-w-xl mx-auto">
-              Privacy isn't about hiding something wrong.
-              It's about controlling who sees your financial life.
+              Financial privacy is a business necessity, not a luxury.
+              Protect your competitive advantage.
             </p>
           </motion.div>
 
@@ -246,7 +215,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* How It Protects You Section */}
+      {/* Why Companies Need Financial Privacy */}
       <section className="relative z-10 px-6 py-24 bg-white/[0.01]">
         <div className="max-w-5xl mx-auto">
           <motion.div
@@ -256,16 +225,69 @@ export default function Home() {
             viewport={{ once: true }}
           >
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              See What's Hidden
+              Why Companies Need Financial Privacy
             </h2>
             <p className="text-white/40 max-w-xl mx-auto">
-              With Offuscate, your transactions become untraceable
+              On-chain transparency creates real business risks
+            </p>
+          </motion.div>
+
+          {/* Risk Cards */}
+          <div className="grid md:grid-cols-3 gap-6 mb-12">
+            {[
+              {
+                icon: Users,
+                title: 'Salary Exposure',
+                description: 'Public payroll data enables poaching, creates internal conflicts, and violates employee privacy.',
+              },
+              {
+                icon: TrendingUp,
+                title: 'Competitive Intelligence',
+                description: 'Competitors can track your vendor relationships, spending patterns, and business strategy.',
+              },
+              {
+                icon: DollarSign,
+                title: 'Treasury Vulnerability',
+                description: 'Visible treasury balances make you a target for attacks and manipulation.',
+              },
+            ].map((risk, index) => (
+              <motion.div
+                key={risk.title}
+                className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.06]"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <risk.icon className="w-8 h-8 text-white/60 mb-4" />
+                <h3 className="text-white font-semibold mb-2">{risk.title}</h3>
+                <p className="text-white/40 text-sm leading-relaxed">{risk.description}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* What Data Stays Hidden */}
+      <section className="relative z-10 px-6 py-24">
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            className="text-center mb-16"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+              What Data Stays Hidden
+            </h2>
+            <p className="text-white/40 max-w-xl mx-auto">
+              Cryptographic privacy, not just obscurity
             </p>
           </motion.div>
 
           {/* Comparison */}
           <div className="grid md:grid-cols-2 gap-6 mb-12">
-            {/* Without Offuscate */}
+            {/* Standard Transaction */}
             <motion.div
               className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.06]"
               initial={{ opacity: 0, x: -30 }}
@@ -277,32 +299,32 @@ export default function Home() {
                   <Eye className="w-5 h-5 text-white/30" />
                 </div>
                 <div>
-                  <h3 className="text-white/60 font-medium">Normal Transfer</h3>
-                  <p className="text-xs text-white/25">Everyone can see</p>
+                  <h3 className="text-white/60 font-medium">Standard On-Chain Payment</h3>
+                  <p className="text-xs text-white/25">Fully transparent</p>
                 </div>
               </div>
 
               <div className="space-y-3 font-mono text-sm">
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02]">
-                  <span className="text-white/30">From</span>
-                  <span className="text-white/50">Your Wallet ❌</span>
+                  <span className="text-white/30">Sender</span>
+                  <span className="text-white/50">Company Treasury - Exposed</span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02]">
-                  <span className="text-white/30">To</span>
-                  <span className="text-white/50">Recipient ❌</span>
+                  <span className="text-white/30">Recipient</span>
+                  <span className="text-white/50">Employee Wallet - Exposed</span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02]">
                   <span className="text-white/30">Amount</span>
-                  <span className="text-white/50">1.5 SOL ❌</span>
+                  <span className="text-white/50">$15,000 - Exposed</span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02]">
-                  <span className="text-white/30">History</span>
-                  <span className="text-white/50">Traceable ❌</span>
+                  <span className="text-white/30">Timing</span>
+                  <span className="text-white/50">Monthly pattern - Exposed</span>
                 </div>
               </div>
             </motion.div>
 
-            {/* With Offuscate */}
+            {/* Private Payment */}
             <motion.div
               className="p-6 rounded-2xl bg-white/[0.04] border border-white/[0.12]"
               initial={{ opacity: 0, x: 30 }}
@@ -314,41 +336,103 @@ export default function Home() {
                   <Lock className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-white font-medium">With Offuscate</h3>
-                  <p className="text-xs text-white/40">Cryptographically hidden</p>
+                  <h3 className="text-white font-medium">Private Payroll Payment</h3>
+                  <p className="text-xs text-white/40">Cryptographically protected</p>
                 </div>
               </div>
 
               <div className="space-y-3 font-mono text-sm">
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03]">
-                  <span className="text-white/40">From</span>
-                  <span className="text-white">Hidden ✓</span>
+                  <span className="text-white/40">Sender</span>
+                  <span className="text-white">Payroll Pool - Unlinkable</span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03]">
-                  <span className="text-white/40">To</span>
-                  <span className="text-white">Hidden ✓</span>
+                  <span className="text-white/40">Recipient</span>
+                  <span className="text-white">Stealth Address - Private</span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03]">
                   <span className="text-white/40">Amount</span>
-                  <span className="text-white">Hidden ✓</span>
+                  <span className="text-white">Hidden - ZK Protected</span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03]">
-                  <span className="text-white/40">History</span>
-                  <span className="text-white">Broken ✓</span>
+                  <span className="text-white/40">Timing</span>
+                  <span className="text-white">Batched - Pattern broken</span>
                 </div>
               </div>
             </motion.div>
           </div>
 
-          {/* Quote */}
-          <motion.p
-            className="text-center text-white/30 text-lg italic max-w-2xl mx-auto"
+          {/* Privacy Microcopy */}
+          <motion.div
+            className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center"
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
           >
-            "Some help needs to be visible. Some needs to be silent."
-          </motion.p>
+            <p className="text-white/50 text-sm">
+              Recipients and amounts are not linkable on-chain.
+              Only the recipient can prove they received payment.
+            </p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Who This Is For */}
+      <section className="relative z-10 px-6 py-24 bg-white/[0.01]">
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            className="text-center mb-16"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+              Built For
+            </h2>
+            <p className="text-white/40 max-w-xl mx-auto">
+              Organizations that value financial confidentiality
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              {
+                icon: Building2,
+                title: 'DAOs & Protocols',
+                items: ['Core team compensation', 'Grant disbursements', 'Contributor payouts'],
+              },
+              {
+                icon: Briefcase,
+                title: 'Web3 Startups',
+                items: ['Employee payroll', 'Contractor payments', 'Investor distributions'],
+              },
+              {
+                icon: FileText,
+                title: 'Enterprises',
+                items: ['Vendor settlements', 'Treasury operations', 'Cross-border payments'],
+              },
+            ].map((segment, index) => (
+              <motion.div
+                key={segment.title}
+                className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.06]"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <segment.icon className="w-10 h-10 text-white/60 mb-4" />
+                <h3 className="text-white font-semibold text-lg mb-4">{segment.title}</h3>
+                <ul className="space-y-2">
+                  {segment.items.map((item) => (
+                    <li key={item} className="flex items-center gap-2 text-sm text-white/40">
+                      <CheckCircle className="w-4 h-4 text-white/30" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -362,19 +446,19 @@ export default function Home() {
             viewport={{ once: true }}
           >
             <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">
-              Powered by Real Privacy Tech
+              Enterprise-Grade Privacy Infrastructure
             </h2>
             <p className="text-white/40 text-sm">
-              Not just promises. Cryptographic guarantees.
+              Cryptographic guarantees, not promises
             </p>
           </motion.div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { icon: Binary, name: 'Light Protocol', desc: 'ZK Compression' },
-              { icon: EyeOff, name: 'Stealth Addresses', desc: 'One-time wallets' },
-              { icon: Shuffle, name: 'Privacy Pool', desc: 'Fund mixing' },
-              { icon: Zap, name: 'Solana Speed', desc: 'Sub-second txs' },
+              { icon: EyeOff, name: 'Stealth Addresses', desc: 'One-time recipients' },
+              { icon: Shield, name: 'Payroll Pool', desc: 'Batch settlement' },
+              { icon: Zap, name: 'Solana Speed', desc: 'Sub-second finality' },
             ].map((tech, index) => (
               <motion.div
                 key={tech.name}
@@ -404,10 +488,10 @@ export default function Home() {
           <div className="p-10 rounded-3xl bg-gradient-to-br from-white/[0.04] to-transparent border border-white/[0.08]">
             <div className="text-center mb-8">
               <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
-                What Do You Need?
+                Get Started
               </h2>
               <p className="text-white/40">
-                Choose your path to privacy
+                Choose how you want to use private payments
               </p>
             </div>
 
@@ -417,11 +501,11 @@ export default function Home() {
                 className="group flex items-center gap-4 p-5 rounded-2xl bg-white hover:bg-white/90 transition-all active:scale-[0.98]"
               >
                 <div className="w-12 h-12 rounded-xl bg-black/10 flex items-center justify-center">
-                  <Heart className="w-6 h-6 text-black/70" />
+                  <Users className="w-6 h-6 text-black/70" />
                 </div>
                 <div className="flex-1">
-                  <div className="text-black font-semibold">I want to donate</div>
-                  <div className="text-black/50 text-sm">Support causes privately</div>
+                  <div className="text-black font-semibold">Run Payroll</div>
+                  <div className="text-black/50 text-sm">Pay teams privately</div>
                 </div>
                 <ArrowRight className="w-5 h-5 text-black/40 group-hover:translate-x-1 transition-transform" />
               </Link>
@@ -431,11 +515,11 @@ export default function Home() {
                 className="group flex items-center gap-4 p-5 rounded-2xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] transition-all active:scale-[0.98]"
               >
                 <div className="w-12 h-12 rounded-xl bg-white/[0.08] flex items-center justify-center">
-                  <ArrowLeftRight className="w-6 h-6 text-white/70" />
+                  <Building2 className="w-6 h-6 text-white/70" />
                 </div>
                 <div className="flex-1">
-                  <div className="text-white font-semibold">I want to transfer</div>
-                  <div className="text-white/50 text-sm">Move funds untraceably</div>
+                  <div className="text-white font-semibold">Treasury Operations</div>
+                  <div className="text-white/50 text-sm">Move funds privately</div>
                 </div>
                 <ArrowRight className="w-5 h-5 text-white/40 group-hover:translate-x-1 transition-transform" />
               </Link>
@@ -454,17 +538,10 @@ export default function Home() {
             <span className="text-white font-semibold">Offuscate</span>
           </div>
           <div className="text-white/30 text-sm">
-            Privacy Hackathon 2025 - Built on Solana
+            Private Payroll Infrastructure for Web3
           </div>
-          <div className="flex items-center gap-4">
-            <a
-              href="https://github.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-white/30 hover:text-white transition-colors"
-            >
-              <Code className="w-5 h-5" />
-            </a>
+          <div className="flex items-center gap-4 text-white/30 text-sm">
+            <span>Built on Solana</span>
           </div>
         </div>
       </footer>

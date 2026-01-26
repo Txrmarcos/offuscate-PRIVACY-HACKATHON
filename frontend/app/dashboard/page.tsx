@@ -21,6 +21,10 @@ import {
   ChevronRight,
   Filter,
   Trash2,
+  Building2,
+  Users,
+  DollarSign,
+  Briefcase,
 } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
@@ -33,41 +37,42 @@ import {
   deriveStealthSpendingKey,
 } from '../lib/stealth';
 import { useProgram } from '../lib/program';
+import { useRole } from '../lib/role';
 
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 const devnetConnection = new Connection(RPC_URL, 'confirmed');
 const MEMO_PROGRAM_ID = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
 
-type TabType = 'campaigns' | 'activity' | 'stealth';
-type TxFilterType = 'all' | 'received' | 'sent' | 'stealth' | 'public';
+type TabType = 'batches' | 'history' | 'receipts';
+type TxFilterType = 'all' | 'received' | 'sent' | 'private' | 'standard';
 
 const ITEMS_PER_PAGE = 8;
 
-interface StealthPayment {
+interface PrivateReceipt {
   signature: string;
   stealthAddress: string;
   ephemeralPubKey: string;
   amount: number;
   timestamp: number;
-  canSpend: boolean;
+  canClaim: boolean;
 }
 
-interface MyCampaign {
+interface PayrollBatch {
   id: string;
   title: string;
-  goal: number;
-  raised: number;
-  donorCount: number;
+  budget: number;
+  distributed: number;
+  recipientCount: number;
   vaultBalance: number;
   stealthEnabled: boolean;
   status: 'Active' | 'Closed' | 'Completed';
 }
 
-interface IndexedTransaction {
+interface IndexedPayment {
   signature: string;
   timestamp: number;
   type: string;
-  isStealth: boolean;
+  isPrivate: boolean;
   amount: number;
   fee: number;
   description: string;
@@ -81,7 +86,7 @@ interface HeliusStatus {
 
 interface WebhookStats {
   eventCount: number;
-  stealthCount: number;
+  privateCount: number;
   lastReceived: number | null;
 }
 
@@ -95,26 +100,28 @@ export default function DashboardPage() {
     closeCampaign,
     setStealthMetaAddress,
   } = useProgram();
+  const { role } = useRole();
 
-  const [activeTab, setActiveTab] = useState<TabType>('activity');
+  const isEmployer = role === 'employer';
+  const [activeTab, setActiveTab] = useState<TabType>(isEmployer ? 'batches' : 'receipts');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showBalance, setShowBalance] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [payments, setPayments] = useState<StealthPayment[]>([]);
+  const [receipts, setReceipts] = useState<PrivateReceipt[]>([]);
   const [isScanning, setIsScanning] = useState(false);
-  const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const [claiming, setClaiming] = useState<string | null>(null);
   const [lastScan, setLastScan] = useState<Date | null>(null);
 
-  const [myCampaigns, setMyCampaigns] = useState<MyCampaign[]>([]);
-  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
-  const [withdrawingCampaign, setWithdrawingCampaign] = useState<string | null>(null);
-  const [closingCampaign, setClosingCampaign] = useState<string | null>(null);
+  const [payrollBatches, setPayrollBatches] = useState<PayrollBatch[]>([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
+  const [withdrawingBatch, setWithdrawingBatch] = useState<string | null>(null);
+  const [closingBatch, setClosingBatch] = useState<string | null>(null);
   const [enablingStealth, setEnablingStealth] = useState<string | null>(null);
 
-  const [indexedTxs, setIndexedTxs] = useState<IndexedTransaction[]>([]);
-  const [loadingTxs, setLoadingTxs] = useState(false);
-  const [txFilter, setTxFilter] = useState<TxFilterType>('all');
-  const [txPage, setTxPage] = useState(1);
+  const [indexedPayments, setIndexedPayments] = useState<IndexedPayment[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [paymentFilter, setPaymentFilter] = useState<TxFilterType>('all');
+  const [paymentPage, setPaymentPage] = useState(1);
   const [heliusStatus, setHeliusStatus] = useState<HeliusStatus>({
     connected: false,
     latency: 0,
@@ -123,18 +130,18 @@ export default function DashboardPage() {
 
   const [webhookStats, setWebhookStats] = useState<WebhookStats>({
     eventCount: 0,
-    stealthCount: 0,
+    privateCount: 0,
     lastReceived: null,
   });
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
 
-  const totalBalance = payments.reduce((sum, p) => sum + p.amount, 0);
-  const spendablePayments = payments.filter(p => p.canSpend);
-  const totalReceived = indexedTxs.reduce((sum, tx) => sum + (tx.amount > 0 ? tx.amount : 0), 0) / LAMPORTS_PER_SOL;
-  const stealthVolume = indexedTxs
-    .filter(tx => tx.isStealth)
+  const totalClaimable = receipts.reduce((sum, p) => sum + p.amount, 0);
+  const claimableReceipts = receipts.filter(p => p.canClaim);
+  const totalDistributed = indexedPayments.reduce((sum, tx) => sum + (tx.amount > 0 ? tx.amount : 0), 0) / LAMPORTS_PER_SOL;
+  const privateVolume = indexedPayments
+    .filter(tx => tx.isPrivate)
     .reduce((sum, tx) => sum + (tx.amount > 0 ? tx.amount : 0), 0) / LAMPORTS_PER_SOL;
 
   const fetchHeliusStatus = useCallback(async () => {
@@ -157,105 +164,105 @@ export default function DashboardPage() {
       const data = await res.json();
       setWebhookStats({
         eventCount: data.count || 0,
-        stealthCount: data.stealthCount || 0,
+        privateCount: data.stealthCount || 0,
         lastReceived: data.lastReceived,
       });
     } catch {}
   }, []);
 
-  const fetchIndexedTransactions = useCallback(async () => {
+  const fetchIndexedPayments = useCallback(async () => {
     if (!publicKey) return;
-    setLoadingTxs(true);
+    setLoadingPayments(true);
     try {
       const res = await fetch(`/api/helius/transactions?wallet=${publicKey.toBase58()}&limit=20`);
       const data = await res.json();
       if (data.success) {
-        setIndexedTxs(data.transactions.map((tx: any) => ({
+        setIndexedPayments(data.transactions.map((tx: any) => ({
           signature: tx.signature,
           timestamp: tx.timestamp,
           type: tx.type || 'UNKNOWN',
-          isStealth: tx.isStealth,
+          isPrivate: tx.isStealth,
           amount: tx.nativeTransfers?.[0]?.amount || 0,
           fee: tx.fee || 0,
           description: tx.description || '',
         })));
       }
     } catch (err) {
-      console.error('Failed to fetch transactions:', err);
+      console.error('Failed to fetch payments:', err);
     } finally {
-      setLoadingTxs(false);
+      setLoadingPayments(false);
     }
   }, [publicKey]);
 
-  const loadMyCampaigns = useCallback(async () => {
+  const loadPayrollBatches = useCallback(async () => {
     if (!publicKey) return;
-    setLoadingCampaigns(true);
+    setLoadingBatches(true);
     try {
       const allCampaigns = await listCampaigns();
-      const owned: MyCampaign[] = [];
+      const owned: PayrollBatch[] = [];
       for (const { account } of allCampaigns) {
         if (account.owner.toBase58() === publicKey.toBase58()) {
           const vaultBalance = await fetchVaultBalance(account.campaignId);
           owned.push({
             id: account.campaignId,
             title: account.title,
-            goal: account.goal,
-            raised: account.totalRaised,
-            donorCount: account.donorCount,
+            budget: account.goal,
+            distributed: account.totalRaised,
+            recipientCount: account.donorCount,
             vaultBalance,
             stealthEnabled: !!account.stealthMetaAddress,
             status: account.status,
           });
         }
       }
-      setMyCampaigns(owned);
+      setPayrollBatches(owned);
     } catch (err) {
-      console.error('Failed to load campaigns:', err);
+      console.error('Failed to load batches:', err);
     } finally {
-      setLoadingCampaigns(false);
+      setLoadingBatches(false);
     }
   }, [publicKey, listCampaigns, fetchVaultBalance]);
 
-  const enableStealthOnCampaign = async (campaignId: string) => {
+  const enableStealthOnBatch = async (batchId: string) => {
     if (!metaAddressString) return;
-    setEnablingStealth(campaignId);
+    setEnablingStealth(batchId);
     try {
-      await setStealthMetaAddress(campaignId, metaAddressString);
-      setMyCampaigns(prev => prev.map(c =>
-        c.id === campaignId ? { ...c, stealthEnabled: true } : c
+      await setStealthMetaAddress(batchId, metaAddressString);
+      setPayrollBatches(prev => prev.map(b =>
+        b.id === batchId ? { ...b, stealthEnabled: true } : b
       ));
     } catch (err) {
-      console.error('Failed to enable stealth:', err);
+      console.error('Failed to enable privacy:', err);
     } finally {
       setEnablingStealth(null);
     }
   };
 
-  const withdrawFromCampaign = async (campaignId: string, amount: number) => {
+  const withdrawFromBatch = async (batchId: string, amount: number) => {
     if (!publicKey || amount <= 0) return;
-    setWithdrawingCampaign(campaignId);
+    setWithdrawingBatch(batchId);
     try {
-      await programWithdraw(campaignId, amount);
-      await closeCampaign(campaignId);
-      setMyCampaigns(prev => prev.filter(c => c.id !== campaignId));
+      await programWithdraw(batchId, amount);
+      await closeCampaign(batchId);
+      setPayrollBatches(prev => prev.filter(b => b.id !== batchId));
     } catch (err) {
       console.error('Withdraw failed:', err);
-      await loadMyCampaigns();
+      await loadPayrollBatches();
     } finally {
-      setWithdrawingCampaign(null);
+      setWithdrawingBatch(null);
     }
   };
 
-  const handleCloseCampaign = async (campaignId: string) => {
+  const handleCloseBatch = async (batchId: string) => {
     if (!publicKey) return;
-    setClosingCampaign(campaignId);
+    setClosingBatch(batchId);
     try {
-      await closeCampaign(campaignId);
-      setMyCampaigns(prev => prev.filter(c => c.id !== campaignId));
+      await closeCampaign(batchId);
+      setPayrollBatches(prev => prev.filter(b => b.id !== batchId));
     } catch (err) {
-      console.error('Close campaign failed:', err);
+      console.error('Close batch failed:', err);
     } finally {
-      setClosingCampaign(null);
+      setClosingBatch(null);
     }
   };
 
@@ -264,12 +271,12 @@ export default function DashboardPage() {
     fetchHeliusStatus();
     fetchWebhookStats();
     if (publicKey) {
-      loadMyCampaigns();
-      fetchIndexedTransactions();
+      loadPayrollBatches();
+      fetchIndexedPayments();
     }
     const webhookInterval = setInterval(fetchWebhookStats, 10000);
     return () => clearInterval(webhookInterval);
-  }, [publicKey, loadMyCampaigns, fetchIndexedTransactions, fetchHeliusStatus, fetchWebhookStats]);
+  }, [publicKey, loadPayrollBatches, fetchIndexedPayments, fetchHeliusStatus, fetchWebhookStats]);
 
   const handleCopy = async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -277,11 +284,11 @@ export default function DashboardPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const scanForPayments = useCallback(async () => {
+  const scanForReceipts = useCallback(async () => {
     if (!stealthKeys) return;
     setIsScanning(true);
     try {
-      const foundPayments: StealthPayment[] = [];
+      const foundReceipts: PrivateReceipt[] = [];
       const signatures = await devnetConnection.getSignaturesForAddress(
         new PublicKey(MEMO_PROGRAM_ID),
         { limit: 100 }
@@ -338,14 +345,14 @@ export default function DashboardPage() {
 
                         if (isOurs) {
                           const currentBalance = await devnetConnection.getBalance(address);
-                          if (!foundPayments.some(p => p.stealthAddress === address.toBase58())) {
-                            foundPayments.push({
+                          if (!foundReceipts.some(r => r.stealthAddress === address.toBase58())) {
+                            foundReceipts.push({
                               signature: sig.signature,
                               stealthAddress: address.toBase58(),
                               ephemeralPubKey: ephemeralPubKey,
                               amount: currentBalance / LAMPORTS_PER_SOL,
                               timestamp: sig.blockTime || 0,
-                              canSpend: currentBalance > 0,
+                              canClaim: currentBalance > 0,
                             });
                           }
                         }
@@ -359,7 +366,7 @@ export default function DashboardPage() {
         }));
       }
 
-      setPayments(foundPayments);
+      setReceipts(foundReceipts);
       setLastScan(new Date());
     } catch (err) {
       console.error('Scan error:', err);
@@ -368,12 +375,12 @@ export default function DashboardPage() {
     }
   }, [stealthKeys]);
 
-  const withdrawFunds = useCallback(async (payment: StealthPayment) => {
+  const claimPayment = useCallback(async (receipt: PrivateReceipt) => {
     if (!stealthKeys || !publicKey) return;
-    setWithdrawing(payment.stealthAddress);
+    setClaiming(receipt.stealthAddress);
     try {
       const stealthKp = deriveStealthSpendingKey(
-        payment.ephemeralPubKey,
+        receipt.ephemeralPubKey,
         stealthKeys.viewKey.privateKey,
         stealthKeys.spendKey.publicKey
       );
@@ -402,23 +409,23 @@ export default function DashboardPage() {
       });
       await devnetConnection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
 
-      setPayments(prev => prev.map(p =>
-        p.stealthAddress === payment.stealthAddress
-          ? { ...p, amount: 0, canSpend: false }
-          : p
+      setReceipts(prev => prev.map(r =>
+        r.stealthAddress === receipt.stealthAddress
+          ? { ...r, amount: 0, canClaim: false }
+          : r
       ));
     } catch (err) {
-      console.error('Withdraw error:', err);
+      console.error('Claim error:', err);
     } finally {
-      setWithdrawing(null);
+      setClaiming(null);
     }
   }, [stealthKeys, publicKey]);
 
   useEffect(() => {
     if (stealthKeys && !lastScan) {
-      scanForPayments();
+      scanForReceipts();
     }
-  }, [stealthKeys, lastScan, scanForPayments]);
+  }, [stealthKeys, lastScan, scanForReceipts]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -432,9 +439,9 @@ export default function DashboardPage() {
 
   const refreshAll = async () => {
     await Promise.all([
-      loadMyCampaigns(),
-      fetchIndexedTransactions(),
-      scanForPayments(),
+      loadPayrollBatches(),
+      fetchIndexedPayments(),
+      scanForReceipts(),
       fetchHeliusStatus(),
       fetchWebhookStats(),
     ]);
@@ -452,11 +459,11 @@ export default function DashboardPage() {
       <div className="min-h-screen px-6 py-24 flex items-center justify-center">
         <div className="max-w-md mx-auto text-center">
           <div className="w-24 h-24 mx-auto mb-8 rounded-[2.25rem] bg-white/[0.03] border border-white/[0.08] backdrop-blur-3xl flex items-center justify-center">
-            <Shield className="w-10 h-10 text-white/60" />
+            <Building2 className="w-10 h-10 text-white/60" />
           </div>
           <h1 className="text-4xl font-black tracking-tighter text-white mb-4">Connect Wallet</h1>
           <p className="text-white/40 text-lg">
-            Connect your wallet to access your private vault.
+            Connect your wallet to access your operations dashboard.
           </p>
         </div>
       </div>
@@ -473,7 +480,7 @@ export default function DashboardPage() {
           </div>
           <h1 className="text-4xl font-black tracking-tighter text-white mb-4">Setup Privacy</h1>
           <p className="text-white/40 text-lg mb-8">
-            Generate stealth keys for private operations.
+            Generate cryptographic keys for private operations.
           </p>
           <button
             onClick={deriveKeysFromWallet}
@@ -492,19 +499,23 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-semibold text-white mb-1">Vault</h1>
+            <h1 className="text-3xl font-semibold text-white mb-1">
+              {isEmployer ? 'Operations Dashboard' : 'My Payments'}
+            </h1>
             <p className="text-white/40 text-sm">
-              Manage your private assets and stealth operations.
+              {isEmployer
+                ? 'Manage payroll batches and private payments.'
+                : 'View and claim your private payments.'}
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <button
               onClick={refreshAll}
-              disabled={isScanning || loadingCampaigns || loadingTxs}
+              disabled={isScanning || loadingBatches || loadingPayments}
               className="w-11 h-11 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-white/40 hover:text-white hover:bg-white/[0.05] transition-all active:scale-95"
             >
-              {(isScanning || loadingCampaigns || loadingTxs) ? (
+              {(isScanning || loadingBatches || loadingPayments) ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <RefreshCw className="w-4 h-4" />
@@ -517,9 +528,9 @@ export default function DashboardPage() {
                 className="w-11 h-11 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-white/40 hover:text-white hover:bg-white/[0.05] transition-all active:scale-95 relative"
               >
                 <Bell className="w-4 h-4" />
-                {webhookStats.stealthCount > 0 && (
+                {webhookStats.privateCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-4 h-4 bg-white text-black text-[9px] font-bold rounded-full flex items-center justify-center">
-                    {webhookStats.stealthCount > 9 ? '9+' : webhookStats.stealthCount}
+                    {webhookStats.privateCount > 9 ? '9+' : webhookStats.privateCount}
                   </span>
                 )}
               </button>
@@ -537,38 +548,48 @@ export default function DashboardPage() {
                   </div>
                   <div className="p-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-white/40">Total</span>
+                      <span className="text-xs text-white/40">Total Operations</span>
                       <span className="text-xs font-mono text-white">{webhookStats.eventCount}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-white/40">Stealth</span>
-                      <span className="text-xs font-mono text-white">{webhookStats.stealthCount}</span>
+                      <span className="text-xs text-white/40">Private Payments</span>
+                      <span className="text-xs font-mono text-white">{webhookStats.privateCount}</span>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <button
-              onClick={() => setShowPaymentModal(true)}
-              className="h-11 px-5 bg-white text-black text-sm font-medium rounded-2xl hover:bg-white/90 transition-all active:scale-95 flex items-center gap-2"
-            >
-              <Send className="w-4 h-4" />
-              Send Private
-            </button>
+            {isEmployer && (
+              <button
+                onClick={() => setShowPaymentModal(true)}
+                className="h-11 px-5 bg-white text-black text-sm font-medium rounded-2xl hover:bg-white/90 transition-all active:scale-95 flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                Send Payment
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Stat Pills */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-          {[
-            { label: 'TOTAL RECEIVED', value: `${totalReceived.toFixed(2)}`, unit: 'SOL', icon: ArrowDownLeft },
-            { label: 'STEALTH VOLUME', value: `${stealthVolume.toFixed(2)}`, unit: 'SOL', icon: EyeOff },
-            { label: 'CLAIMABLE', value: showBalance ? `${totalBalance.toFixed(2)}` : '••••', unit: 'SOL', icon: Shield },
-            { label: 'CAMPAIGNS', value: `${myCampaigns.length}`, unit: 'Active', icon: Wallet },
-            { label: 'TRANSACTIONS', value: `${indexedTxs.length}`, unit: 'Total', icon: Activity },
-            { label: 'RPC', value: heliusStatus.connected ? `${heliusStatus.latency}` : '—', unit: 'ms', icon: Server, status: heliusStatus.connected },
-          ].map(({ label, value, unit, icon: Icon, status }) => (
+        {/* Stat Cards */}
+        <div className={`grid grid-cols-2 md:grid-cols-3 ${isEmployer ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} gap-3 mb-6`}>
+          {(isEmployer
+            ? [
+                { label: 'TOTAL DISTRIBUTED', value: `${totalDistributed.toFixed(2)}`, unit: 'SOL', icon: DollarSign },
+                { label: 'PRIVATE VOLUME', value: `${privateVolume.toFixed(2)}`, unit: 'SOL', icon: EyeOff },
+                { label: 'CLAIMABLE', value: showBalance ? `${totalClaimable.toFixed(2)}` : '****', unit: 'SOL', icon: Shield },
+                { label: 'PAYROLL BATCHES', value: `${payrollBatches.length}`, unit: 'Active', icon: Briefcase },
+                { label: 'OPERATIONS', value: `${indexedPayments.length}`, unit: 'Total', icon: Activity },
+                { label: 'RPC', value: heliusStatus.connected ? `${heliusStatus.latency}` : '-', unit: 'ms', icon: Server, status: heliusStatus.connected },
+              ]
+            : [
+                { label: 'CLAIMABLE', value: showBalance ? `${totalClaimable.toFixed(2)}` : '****', unit: 'SOL', icon: Shield },
+                { label: 'PRIVATE RECEIPTS', value: `${receipts.length}`, unit: 'Total', icon: EyeOff },
+                { label: 'PAYMENT HISTORY', value: `${indexedPayments.length}`, unit: 'Total', icon: Activity },
+                { label: 'RPC', value: heliusStatus.connected ? `${heliusStatus.latency}` : '-', unit: 'ms', icon: Server, status: heliusStatus.connected },
+              ]
+          ).map(({ label, value, unit, icon: Icon, status }) => (
             <div
               key={label}
               className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-all"
@@ -589,14 +610,14 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Stealth Address */}
+        {/* Private Receiving Address */}
         <div className="mb-6 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-9 h-9 rounded-xl bg-white/[0.04] flex items-center justify-center">
               <Lock className="w-4 h-4 text-white/30" />
             </div>
             <div>
-              <p className="text-[10px] text-white/25 tracking-wide mb-0.5">YOUR STEALTH ADDRESS</p>
+              <p className="text-[10px] text-white/25 tracking-wide mb-0.5">PRIVATE RECEIVING ADDRESS</p>
               <p className="font-mono text-sm text-white/60">
                 {metaAddressString?.slice(0, 16)} ... {metaAddressString?.slice(-12)}
               </p>
@@ -610,18 +631,26 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* Pending Donations - shown when there are queued batch donations */}
-        <div className="mb-6">
-          <PendingDonations />
-        </div>
+        {/* Pending Payments - Only for Employers */}
+        {isEmployer && (
+          <div className="mb-6">
+            <PendingDonations />
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex items-center gap-8 mb-8 border-b border-white/[0.06]">
-          {[
-            { id: 'campaigns' as TabType, label: 'My Campaigns' },
-            { id: 'activity' as TabType, label: 'Activity' },
-            { id: 'stealth' as TabType, label: 'Stealth Payments' },
-          ].map(({ id, label }) => (
+          {(isEmployer
+            ? [
+                { id: 'batches' as TabType, label: 'Payroll Batches' },
+                { id: 'history' as TabType, label: 'Payment History' },
+                { id: 'receipts' as TabType, label: 'Private Receipts' },
+              ]
+            : [
+                { id: 'receipts' as TabType, label: 'Private Receipts' },
+                { id: 'history' as TabType, label: 'Payment History' },
+              ]
+          ).map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
@@ -640,68 +669,69 @@ export default function DashboardPage() {
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'campaigns' && (
+        {activeTab === 'batches' && isEmployer && (
           <div className="space-y-3">
-            {myCampaigns.length === 0 ? (
+            {payrollBatches.length === 0 ? (
               <div className="p-12 text-center rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-                <Wallet className="w-10 h-10 mx-auto mb-3 text-white/10" />
-                <p className="text-white/30 text-sm">No campaigns yet</p>
+                <Briefcase className="w-10 h-10 mx-auto mb-3 text-white/10" />
+                <p className="text-white/30 text-sm">No payroll batches yet</p>
+                <p className="text-white/20 text-xs mt-1">Create your first batch to start distributing payments</p>
               </div>
             ) : (
               <>
-                {myCampaigns.map((campaign) => (
-                  <div key={campaign.id} className={`p-5 flex items-center justify-between rounded-2xl border transition-all ${
-                    campaign.status === 'Active'
+                {payrollBatches.map((batch) => (
+                  <div key={batch.id} className={`p-5 flex items-center justify-between rounded-2xl border transition-all ${
+                    batch.status === 'Active'
                       ? 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]'
                       : 'bg-white/[0.01] border-white/[0.03] opacity-60'
                   }`}>
                     <div className="flex items-center gap-4">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                        campaign.status === 'Active' ? 'bg-white/[0.04]' : 'bg-white/[0.02]'
+                        batch.status === 'Active' ? 'bg-white/[0.04]' : 'bg-white/[0.02]'
                       }`}>
-                        <Wallet className="w-4 h-4 text-white/30" />
+                        <Briefcase className="w-4 h-4 text-white/30" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="text-white text-sm font-medium">{campaign.title}</p>
+                          <p className="text-white text-sm font-medium">{batch.title}</p>
                           <span className={`px-2 py-0.5 text-[9px] font-medium rounded-md ${
-                            campaign.status === 'Active'
+                            batch.status === 'Active'
                               ? 'bg-green-400/10 text-green-400'
-                              : campaign.status === 'Closed'
+                              : batch.status === 'Closed'
                               ? 'bg-red-400/10 text-red-400'
                               : 'bg-white/[0.08] text-white/60'
                           }`}>
-                            {campaign.status.toUpperCase()}
+                            {batch.status.toUpperCase()}
                           </span>
                         </div>
-                        <p className="text-white/30 text-xs">{campaign.donorCount} donors</p>
+                        <p className="text-white/30 text-xs">{batch.recipientCount} recipients</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <p className="font-mono text-white">
-                        {campaign.vaultBalance.toFixed(4)} <span className="text-xs text-white/30">SOL</span>
+                        {batch.vaultBalance.toFixed(4)} <span className="text-xs text-white/30">SOL</span>
                       </p>
-                      {campaign.status === 'Active' && campaign.vaultBalance > 0 && (
+                      {batch.status === 'Active' && batch.vaultBalance > 0 && (
                         <button
-                          onClick={() => withdrawFromCampaign(campaign.id, campaign.vaultBalance)}
-                          disabled={withdrawingCampaign === campaign.id || closingCampaign === campaign.id}
+                          onClick={() => withdrawFromBatch(batch.id, batch.vaultBalance)}
+                          disabled={withdrawingBatch === batch.id || closingBatch === batch.id}
                           className="h-9 px-4 bg-white text-black text-xs font-medium rounded-xl hover:bg-white/90 transition-all active:scale-95 disabled:opacity-50"
                         >
-                          {withdrawingCampaign === campaign.id ? (
+                          {withdrawingBatch === batch.id ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
                             'Withdraw'
                           )}
                         </button>
                       )}
-                      {campaign.status === 'Active' && (
+                      {batch.status === 'Active' && (
                         <button
-                          onClick={() => handleCloseCampaign(campaign.id)}
-                          disabled={closingCampaign === campaign.id || withdrawingCampaign === campaign.id}
+                          onClick={() => handleCloseBatch(batch.id)}
+                          disabled={closingBatch === batch.id || withdrawingBatch === batch.id}
                           className="h-9 w-9 flex items-center justify-center bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-all active:scale-95 disabled:opacity-50"
-                          title="Close campaign"
+                          title="Close batch"
                         >
-                          {closingCampaign === campaign.id ? (
+                          {closingBatch === batch.id ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
                             <Trash2 className="w-4 h-4" />
@@ -716,17 +746,17 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {activeTab === 'activity' && (() => {
-          const filteredTxs = indexedTxs.filter(tx => {
-            if (txFilter === 'all') return true;
-            if (txFilter === 'received') return tx.amount > 0;
-            if (txFilter === 'sent') return tx.amount <= 0;
-            if (txFilter === 'stealth') return tx.isStealth;
-            if (txFilter === 'public') return !tx.isStealth;
+        {activeTab === 'history' && (() => {
+          const filteredPayments = indexedPayments.filter(tx => {
+            if (paymentFilter === 'all') return true;
+            if (paymentFilter === 'received') return tx.amount > 0;
+            if (paymentFilter === 'sent') return tx.amount <= 0;
+            if (paymentFilter === 'private') return tx.isPrivate;
+            if (paymentFilter === 'standard') return !tx.isPrivate;
             return true;
           });
-          const totalPages = Math.ceil(filteredTxs.length / ITEMS_PER_PAGE);
-          const paginatedTxs = filteredTxs.slice((txPage - 1) * ITEMS_PER_PAGE, txPage * ITEMS_PER_PAGE);
+          const totalPages = Math.ceil(filteredPayments.length / ITEMS_PER_PAGE);
+          const paginatedPayments = filteredPayments.slice((paymentPage - 1) * ITEMS_PER_PAGE, paymentPage * ITEMS_PER_PAGE);
 
           return (
             <div className="space-y-4">
@@ -739,14 +769,14 @@ export default function DashboardPage() {
                       { id: 'all' as TxFilterType, label: 'All' },
                       { id: 'received' as TxFilterType, label: 'Received' },
                       { id: 'sent' as TxFilterType, label: 'Sent' },
-                      { id: 'stealth' as TxFilterType, label: 'Stealth' },
-                      { id: 'public' as TxFilterType, label: 'Public' },
+                      { id: 'private' as TxFilterType, label: 'Private' },
+                      { id: 'standard' as TxFilterType, label: 'Standard' },
                     ].map(({ id, label }) => (
                       <button
                         key={id}
-                        onClick={() => { setTxFilter(id); setTxPage(1); }}
+                        onClick={() => { setPaymentFilter(id); setPaymentPage(1); }}
                         className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                          txFilter === id
+                          paymentFilter === id
                             ? 'bg-white text-black'
                             : 'bg-white/[0.03] text-white/40 hover:bg-white/[0.06] hover:text-white/60'
                         }`}
@@ -757,19 +787,19 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <span className="text-xs text-white/30">
-                  {filteredTxs.length} transaction{filteredTxs.length !== 1 ? 's' : ''}
+                  {filteredPayments.length} payment{filteredPayments.length !== 1 ? 's' : ''}
                 </span>
               </div>
 
               {/* List */}
-              {paginatedTxs.length === 0 ? (
+              {paginatedPayments.length === 0 ? (
                 <div className="p-12 text-center rounded-2xl bg-white/[0.02] border border-white/[0.05]">
                   <Activity className="w-10 h-10 mx-auto mb-3 text-white/10" />
-                  <p className="text-white/30 text-sm">No transactions found</p>
+                  <p className="text-white/30 text-sm">No payments found</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {paginatedTxs.map((tx) => (
+                  {paginatedPayments.map((tx) => (
                     <div key={tx.signature} className="px-5 py-4 flex items-center justify-between rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-all">
                       <div className="flex items-center gap-4">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
@@ -787,11 +817,11 @@ export default function DashboardPage() {
                               {tx.signature.slice(0, 8)} ... {tx.signature.slice(-8)}
                             </span>
                             <span className={`px-2 py-0.5 text-[9px] font-medium rounded-md ${
-                              tx.isStealth
+                              tx.isPrivate
                                 ? 'bg-white/[0.08] text-white/60'
                                 : 'bg-white/[0.04] text-white/30'
                             }`}>
-                              {tx.isStealth ? 'STEALTH' : 'PUBLIC'}
+                              {tx.isPrivate ? 'PRIVATE' : 'STANDARD'}
                             </span>
                           </div>
                           <p className="text-xs text-white/25 mt-0.5">{formatDate(tx.timestamp)}</p>
@@ -819,8 +849,8 @@ export default function DashboardPage() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between pt-2">
                   <button
-                    onClick={() => setTxPage(p => Math.max(1, p - 1))}
-                    disabled={txPage === 1}
+                    onClick={() => setPaymentPage(p => Math.max(1, p - 1))}
+                    disabled={paymentPage === 1}
                     className="flex items-center gap-1 px-3 py-2 text-xs font-medium rounded-lg bg-white/[0.03] text-white/40 hover:bg-white/[0.06] hover:text-white/60 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <ChevronLeft className="w-4 h-4" />
@@ -830,9 +860,9 @@ export default function DashboardPage() {
                     {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
                       <button
                         key={page}
-                        onClick={() => setTxPage(page)}
+                        onClick={() => setPaymentPage(page)}
                         className={`w-8 h-8 text-xs font-medium rounded-lg transition-all ${
-                          txPage === page
+                          paymentPage === page
                             ? 'bg-white text-black'
                             : 'bg-white/[0.03] text-white/40 hover:bg-white/[0.06]'
                         }`}
@@ -842,8 +872,8 @@ export default function DashboardPage() {
                     ))}
                   </div>
                   <button
-                    onClick={() => setTxPage(p => Math.min(totalPages, p + 1))}
-                    disabled={txPage === totalPages}
+                    onClick={() => setPaymentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={paymentPage === totalPages}
                     className="flex items-center gap-1 px-3 py-2 text-xs font-medium rounded-lg bg-white/[0.03] text-white/40 hover:bg-white/[0.06] hover:text-white/60 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     Next
@@ -855,44 +885,45 @@ export default function DashboardPage() {
           );
         })()}
 
-        {activeTab === 'stealth' && (
+        {activeTab === 'receipts' && (
           <div className="space-y-3">
-            {payments.length === 0 ? (
+            {receipts.length === 0 ? (
               <div className="p-12 text-center rounded-2xl bg-white/[0.02] border border-white/[0.05]">
                 <EyeOff className="w-10 h-10 mx-auto mb-3 text-white/10" />
-                <p className="text-white/30 text-sm">No stealth payments found</p>
+                <p className="text-white/30 text-sm">No private receipts found</p>
+                <p className="text-white/20 text-xs mt-1">Payments sent to your private address will appear here</p>
               </div>
             ) : (
               <>
-                {payments.map((payment) => (
-                  <div key={payment.signature} className="px-5 py-4 flex items-center justify-between rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-all">
+                {receipts.map((receipt) => (
+                  <div key={receipt.signature} className="px-5 py-4 flex items-center justify-between rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-all">
                     <div className="flex items-center gap-4">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                        payment.canSpend ? 'bg-white/[0.06]' : 'bg-white/[0.03]'
+                        receipt.canClaim ? 'bg-white/[0.06]' : 'bg-white/[0.03]'
                       }`}>
-                        <ArrowDownLeft className={`w-4 h-4 ${payment.canSpend ? 'text-white/60' : 'text-white/30'}`} />
+                        <ArrowDownLeft className={`w-4 h-4 ${receipt.canClaim ? 'text-white/60' : 'text-white/30'}`} />
                       </div>
                       <div>
                         <p className="text-white font-mono text-sm">
-                          {payment.stealthAddress.slice(0, 8)} ... {payment.stealthAddress.slice(-8)}
+                          {receipt.stealthAddress.slice(0, 8)} ... {receipt.stealthAddress.slice(-8)}
                         </p>
-                        <p className="text-xs text-white/25 mt-0.5">{formatDate(payment.timestamp)}</p>
+                        <p className="text-xs text-white/25 mt-0.5">{formatDate(receipt.timestamp)}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
                       <p className="font-mono text-white">
-                        {payment.amount.toFixed(4)} <span className="text-xs text-white/30">SOL</span>
+                        {receipt.amount.toFixed(4)} <span className="text-xs text-white/30">SOL</span>
                       </p>
-                      {payment.canSpend && (
+                      {receipt.canClaim && (
                         <button
-                          onClick={() => withdrawFunds(payment)}
-                          disabled={withdrawing === payment.stealthAddress}
+                          onClick={() => claimPayment(receipt)}
+                          disabled={claiming === receipt.stealthAddress}
                           className="h-9 px-4 bg-white text-black text-xs font-medium rounded-xl hover:bg-white/90 transition-all active:scale-95"
                         >
-                          {withdrawing === payment.stealthAddress ? (
+                          {claiming === receipt.stealthAddress ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
-                            'Claim'
+                            'Claim Payment'
                           )}
                         </button>
                       )}

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { Header } from './components/Header';
 import { WaveMeshBackground } from './components/WaveMeshBackground';
+import { AppShell } from './components/AppShell';
 import { Providers } from './providers';
 import './globals.css';
 
@@ -31,9 +32,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-[#0a0a0a] text-white antialiased`}
       >
         <Providers>
-          <WaveMeshBackground />
-          <Header />
-          <main className="relative z-10 pt-24">{children}</main>
+          <AppShell>
+            <WaveMeshBackground />
+            <Header />
+            <main className="relative z-10 pt-24">{children}</main>
+          </AppShell>
         </Providers>
       </body>
     </html>

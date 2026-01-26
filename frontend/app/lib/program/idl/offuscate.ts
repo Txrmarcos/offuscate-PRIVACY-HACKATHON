@@ -1,4 +1,10 @@
-{
+/**
+ * Program IDL in camelCase format in order to be used in JS/TS.
+ *
+ * Note that this is only a type helper and is not the actual IDL. The original
+ * IDL can be found at `target/idl/offuscate.json`.
+ */
+export type Offuscate = {
   "address": "5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq",
   "metadata": {
     "name": "offuscate",
@@ -8,7 +14,7 @@
   },
   "instructions": [
     {
-      "name": "accept_invite",
+      "name": "acceptInvite",
       "docs": [
         "Accept an invite and register stealth address",
         "The recipient provides their stealth meta-address"
@@ -48,25 +54,25 @@
               {
                 "kind": "account",
                 "path": "invite.invite_code",
-                "account": "Invite"
+                "account": "invite"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "stealth_meta_address",
+          "name": "stealthMetaAddress",
           "type": "string"
         }
       ]
     },
     {
-      "name": "batch_claim_withdraw",
+      "name": "batchClaimWithdraw",
       "docs": [
         "BATCH CLAIM WITHDRAWALS",
         "",
@@ -118,7 +124,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -141,14 +147,14 @@
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
     },
     {
-      "name": "claim_withdraw",
+      "name": "claimWithdraw",
       "docs": [
         "Claim a pending withdrawal after the delay has passed",
         "",
@@ -197,7 +203,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -220,7 +226,7 @@
           }
         },
         {
-          "name": "pending_withdraw",
+          "name": "pendingWithdraw",
           "writable": true,
           "pda": {
             "seeds": [
@@ -244,14 +250,14 @@
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
     },
     {
-      "name": "claim_withdraw_relayed",
+      "name": "claimWithdrawRelayed",
       "docs": [
         "Claim a pending withdrawal via RELAYER (gasless for recipient)",
         "",
@@ -319,7 +325,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -342,7 +348,7 @@
           }
         },
         {
-          "name": "pending_withdraw",
+          "name": "pendingWithdraw",
           "writable": true,
           "pda": {
             "seeds": [
@@ -361,24 +367,24 @@
               {
                 "kind": "account",
                 "path": "pending_withdraw.recipient",
-                "account": "PendingWithdraw"
+                "account": "pendingWithdraw"
               }
             ]
           }
         },
         {
-          "name": "instructions_sysvar",
+          "name": "instructionsSysvar",
           "address": "Sysvar1nstructions1111111111111111111111111"
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
     },
     {
-      "name": "close_campaign",
+      "name": "closeCampaign",
       "docs": [
         "Close a campaign (only owner)"
       ],
@@ -422,20 +428,20 @@
               {
                 "kind": "account",
                 "path": "campaign.campaign_id",
-                "account": "Campaign"
+                "account": "campaign"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
     },
     {
-      "name": "create_campaign",
+      "name": "createCampaign",
       "docs": [
         "Create a new campaign with a vault PDA",
         "The vault is controlled by the program, not the owner"
@@ -476,7 +482,7 @@
               },
               {
                 "kind": "arg",
-                "path": "campaign_id"
+                "path": "campaignId"
               }
             ]
           }
@@ -498,19 +504,19 @@
               },
               {
                 "kind": "arg",
-                "path": "campaign_id"
+                "path": "campaignId"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "campaign_id",
+          "name": "campaignId",
           "type": "string"
         },
         {
@@ -532,7 +538,7 @@
       ]
     },
     {
-      "name": "create_invite",
+      "name": "createInvite",
       "docs": [
         "Create an invite for a recipient to join a payroll batch",
         "Only the batch owner can create invites"
@@ -576,7 +582,7 @@
               {
                 "kind": "account",
                 "path": "campaign.campaign_id",
-                "account": "Campaign"
+                "account": "campaign"
               }
             ]
           }
@@ -599,19 +605,19 @@
               },
               {
                 "kind": "arg",
-                "path": "invite_code"
+                "path": "inviteCode"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "invite_code",
+          "name": "inviteCode",
           "type": "string"
         }
       ]
@@ -660,7 +666,7 @@
               {
                 "kind": "account",
                 "path": "campaign.campaign_id",
-                "account": "Campaign"
+                "account": "campaign"
               }
             ]
           }
@@ -683,13 +689,13 @@
               {
                 "kind": "account",
                 "path": "campaign.campaign_id",
-                "account": "Campaign"
+                "account": "campaign"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -701,7 +707,7 @@
       ]
     },
     {
-      "name": "get_pool_stats",
+      "name": "getPoolStats",
       "docs": [
         "Get pool stats (view function for frontend)"
       ],
@@ -741,7 +747,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "pda": {
             "seeds": [
               {
@@ -766,7 +772,7 @@
       "args": []
     },
     {
-      "name": "init_churn_vault",
+      "name": "initChurnVault",
       "docs": [
         "Initialize a churn vault (call once per vault: 0, 1, 2)",
         "",
@@ -814,7 +820,7 @@
           }
         },
         {
-          "name": "churn_state",
+          "name": "churnState",
           "writable": true,
           "pda": {
             "seeds": [
@@ -836,13 +842,13 @@
               },
               {
                 "kind": "arg",
-                "path": "vault_index"
+                "path": "vaultIndex"
               }
             ]
           }
         },
         {
-          "name": "churn_vault",
+          "name": "churnVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -864,25 +870,25 @@
               },
               {
                 "kind": "arg",
-                "path": "vault_index"
+                "path": "vaultIndex"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "vault_index",
+          "name": "vaultIndex",
           "type": "u8"
         }
       ]
     },
     {
-      "name": "init_privacy_pool",
+      "name": "initPrivacyPool",
       "docs": [
         "Initialize the global privacy pool",
         "Called once to create the pool PDA"
@@ -929,7 +935,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -952,14 +958,14 @@
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
     },
     {
-      "name": "pool_churn",
+      "name": "poolChurn",
       "docs": [
         "Pool Churn - Move funds from main pool to churn vault",
         "",
@@ -1009,7 +1015,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1032,7 +1038,7 @@
           }
         },
         {
-          "name": "churn_state",
+          "name": "churnState",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1055,13 +1061,13 @@
               {
                 "kind": "account",
                 "path": "churn_state.vault_index",
-                "account": "ChurnVaultState"
+                "account": "churnVaultState"
               }
             ]
           }
         },
         {
-          "name": "churn_vault",
+          "name": "churnVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1084,13 +1090,13 @@
               {
                 "kind": "account",
                 "path": "churn_state.vault_index",
-                "account": "ChurnVaultState"
+                "account": "churnVaultState"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -1102,7 +1108,7 @@
       ]
     },
     {
-      "name": "pool_deposit",
+      "name": "poolDeposit",
       "docs": [
         "Deposit SOL into the privacy pool",
         "",
@@ -1156,7 +1162,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1179,7 +1185,7 @@
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -1191,7 +1197,7 @@
       ]
     },
     {
-      "name": "pool_unchurn",
+      "name": "poolUnchurn",
       "docs": [
         "Pool Unchurn - Return funds from churn vault to main pool",
         "",
@@ -1238,7 +1244,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1261,7 +1267,7 @@
           }
         },
         {
-          "name": "churn_state",
+          "name": "churnState",
           "pda": {
             "seeds": [
               {
@@ -1283,13 +1289,13 @@
               {
                 "kind": "account",
                 "path": "churn_state.vault_index",
-                "account": "ChurnVaultState"
+                "account": "churnVaultState"
               }
             ]
           }
         },
         {
-          "name": "churn_vault",
+          "name": "churnVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1312,13 +1318,13 @@
               {
                 "kind": "account",
                 "path": "churn_state.vault_index",
-                "account": "ChurnVaultState"
+                "account": "churnVaultState"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -1330,7 +1336,7 @@
       ]
     },
     {
-      "name": "private_deposit",
+      "name": "privateDeposit",
       "docs": [
         "Private deposit with commitment",
         "",
@@ -1389,7 +1395,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1412,7 +1418,7 @@
           }
         },
         {
-          "name": "commitment_pda",
+          "name": "commitmentPda",
           "docs": [
             "Commitment PDA - stores the commitment hash",
             "Derived from the commitment bytes so only one deposit per commitment"
@@ -1443,7 +1449,7 @@
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -1464,7 +1470,7 @@
       ]
     },
     {
-      "name": "private_withdraw",
+      "name": "privateWithdraw",
       "docs": [
         "Private withdraw with nullifier",
         "",
@@ -1530,7 +1536,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1553,7 +1559,7 @@
           }
         },
         {
-          "name": "commitment_pda",
+          "name": "commitmentPda",
           "docs": [
             "Commitment PDA - verify it exists and hasn't been spent",
             "The commitment is recomputed from secret_hash || nullifier || amount"
@@ -1579,13 +1585,13 @@
               {
                 "kind": "account",
                 "path": "commitment_pda.commitment",
-                "account": "CommitmentPDA"
+                "account": "commitmentPda"
               }
             ]
           }
         },
         {
-          "name": "nullifier_pda",
+          "name": "nullifierPda",
           "docs": [
             "Nullifier PDA - created to mark this nullifier as used",
             "If this account already exists, the withdrawal will fail (double-spend prevention)"
@@ -1615,7 +1621,7 @@
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -1630,7 +1636,7 @@
           }
         },
         {
-          "name": "secret_hash",
+          "name": "secretHash",
           "type": {
             "array": [
               "u8",
@@ -1645,7 +1651,7 @@
       ]
     },
     {
-      "name": "private_withdraw_relayed",
+      "name": "privateWithdrawRelayed",
       "docs": [
         "Private withdraw via relayer (gasless)",
         "",
@@ -1701,7 +1707,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1724,7 +1730,7 @@
           }
         },
         {
-          "name": "commitment_pda",
+          "name": "commitmentPda",
           "docs": [
             "Commitment PDA"
           ],
@@ -1749,13 +1755,13 @@
               {
                 "kind": "account",
                 "path": "commitment_pda.commitment",
-                "account": "CommitmentPDA"
+                "account": "commitmentPda"
               }
             ]
           }
         },
         {
-          "name": "nullifier_pda",
+          "name": "nullifierPda",
           "docs": [
             "Nullifier PDA - created to mark this nullifier as used"
           ],
@@ -1784,11 +1790,11 @@
           }
         },
         {
-          "name": "instructions_sysvar",
+          "name": "instructionsSysvar",
           "address": "Sysvar1nstructions1111111111111111111111111"
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -1803,7 +1809,7 @@
           }
         },
         {
-          "name": "secret_hash",
+          "name": "secretHash",
           "type": {
             "array": [
               "u8",
@@ -1818,7 +1824,7 @@
       ]
     },
     {
-      "name": "register_stealth_payment",
+      "name": "registerStealthPayment",
       "docs": [
         "Register a stealth payment (metadata only, NO SOL transfer)",
         "This helps the recipient scan for their payments",
@@ -1861,7 +1867,7 @@
               {
                 "kind": "account",
                 "path": "campaign.campaign_id",
-                "account": "Campaign"
+                "account": "campaign"
               }
             ]
           }
@@ -1889,23 +1895,23 @@
               },
               {
                 "kind": "arg",
-                "path": "stealth_address"
+                "path": "stealthAddress"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "stealth_address",
+          "name": "stealthAddress",
           "type": "pubkey"
         },
         {
-          "name": "ephemeral_pub_key",
+          "name": "ephemeralPubKey",
           "type": "string"
         },
         {
@@ -1915,7 +1921,7 @@
       ]
     },
     {
-      "name": "request_withdraw",
+      "name": "requestWithdraw",
       "docs": [
         "Request a withdrawal from the privacy pool",
         "",
@@ -1976,7 +1982,7 @@
           }
         },
         {
-          "name": "pool_vault",
+          "name": "poolVault",
           "pda": {
             "seeds": [
               {
@@ -1998,7 +2004,7 @@
           }
         },
         {
-          "name": "pending_withdraw",
+          "name": "pendingWithdraw",
           "writable": true,
           "pda": {
             "seeds": [
@@ -2022,7 +2028,7 @@
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -2034,7 +2040,7 @@
       ]
     },
     {
-      "name": "revoke_invite",
+      "name": "revokeInvite",
       "docs": [
         "Revoke an invite (only creator can revoke pending invites)"
       ],
@@ -2073,20 +2079,20 @@
               {
                 "kind": "account",
                 "path": "invite.invite_code",
-                "account": "Invite"
+                "account": "invite"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
     },
     {
-      "name": "set_stealth_meta_address",
+      "name": "setStealthMetaAddress",
       "docs": [
         "Set stealth meta-address for a campaign",
         "This allows donors to generate stealth addresses for private donations"
@@ -2131,7 +2137,7 @@
               {
                 "kind": "account",
                 "path": "campaign.campaign_id",
-                "account": "Campaign"
+                "account": "campaign"
               }
             ]
           }
@@ -2139,7 +2145,7 @@
       ],
       "args": [
         {
-          "name": "stealth_meta_address",
+          "name": "stealthMetaAddress",
           "type": "string"
         }
       ]
@@ -2189,7 +2195,7 @@
               {
                 "kind": "account",
                 "path": "campaign.campaign_id",
-                "account": "Campaign"
+                "account": "campaign"
               }
             ]
           }
@@ -2212,13 +2218,13 @@
               {
                 "kind": "account",
                 "path": "campaign.campaign_id",
-                "account": "Campaign"
+                "account": "campaign"
               }
             ]
           }
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -2232,7 +2238,7 @@
   ],
   "accounts": [
     {
-      "name": "Campaign",
+      "name": "campaign",
       "discriminator": [
         50,
         40,
@@ -2245,7 +2251,7 @@
       ]
     },
     {
-      "name": "ChurnVaultState",
+      "name": "churnVaultState",
       "discriminator": [
         237,
         225,
@@ -2258,7 +2264,7 @@
       ]
     },
     {
-      "name": "CommitmentPDA",
+      "name": "commitmentPda",
       "discriminator": [
         6,
         85,
@@ -2271,7 +2277,7 @@
       ]
     },
     {
-      "name": "Invite",
+      "name": "invite",
       "discriminator": [
         230,
         17,
@@ -2284,7 +2290,7 @@
       ]
     },
     {
-      "name": "NullifierPDA",
+      "name": "nullifierPda",
       "discriminator": [
         42,
         93,
@@ -2297,7 +2303,7 @@
       ]
     },
     {
-      "name": "PendingWithdraw",
+      "name": "pendingWithdraw",
       "discriminator": [
         215,
         125,
@@ -2310,7 +2316,7 @@
       ]
     },
     {
-      "name": "PrivacyPool",
+      "name": "privacyPool",
       "discriminator": [
         133,
         184,
@@ -2323,7 +2329,7 @@
       ]
     },
     {
-      "name": "StealthRegistry",
+      "name": "stealthRegistry",
       "discriminator": [
         118,
         226,
@@ -2339,178 +2345,178 @@
   "errors": [
     {
       "code": 6000,
-      "name": "CampaignIdTooLong",
+      "name": "campaignIdTooLong",
       "msg": "Campaign ID too long (max 32 chars)"
     },
     {
       "code": 6001,
-      "name": "TitleTooLong",
+      "name": "titleTooLong",
       "msg": "Title too long (max 64 chars)"
     },
     {
       "code": 6002,
-      "name": "DescriptionTooLong",
+      "name": "descriptionTooLong",
       "msg": "Description too long (max 256 chars)"
     },
     {
       "code": 6003,
-      "name": "InvalidGoal",
+      "name": "invalidGoal",
       "msg": "Invalid goal amount"
     },
     {
       "code": 6004,
-      "name": "InvalidDeadline",
+      "name": "invalidDeadline",
       "msg": "Invalid deadline"
     },
     {
       "code": 6005,
-      "name": "InvalidAmount",
+      "name": "invalidAmount",
       "msg": "Invalid amount"
     },
     {
       "code": 6006,
-      "name": "CampaignNotActive",
+      "name": "campaignNotActive",
       "msg": "Campaign is not active"
     },
     {
       "code": 6007,
-      "name": "CampaignEnded",
+      "name": "campaignEnded",
       "msg": "Campaign has ended"
     },
     {
       "code": 6008,
-      "name": "CampaignNotEnded",
+      "name": "campaignNotEnded",
       "msg": "Campaign has not ended yet"
     },
     {
       "code": 6009,
-      "name": "Unauthorized",
-      "msg": "Unauthorized"
+      "name": "unauthorized",
+      "msg": "unauthorized"
     },
     {
       "code": 6010,
-      "name": "InsufficientFunds",
+      "name": "insufficientFunds",
       "msg": "Insufficient funds in vault"
     },
     {
       "code": 6011,
-      "name": "Overflow",
+      "name": "overflow",
       "msg": "Arithmetic overflow"
     },
     {
       "code": 6012,
-      "name": "MetaAddressTooLong",
+      "name": "metaAddressTooLong",
       "msg": "Stealth meta-address too long (max 200 chars)"
     },
     {
       "code": 6013,
-      "name": "EphemeralKeyTooLong",
+      "name": "ephemeralKeyTooLong",
       "msg": "Ephemeral public key too long (max 64 chars)"
     },
     {
       "code": 6014,
-      "name": "InvalidWithdrawAmount",
+      "name": "invalidWithdrawAmount",
       "msg": "Invalid withdrawal amount. Must be 0.1, 0.5, or 1 SOL"
     },
     {
       "code": 6015,
-      "name": "InsufficientPoolFunds",
+      "name": "insufficientPoolFunds",
       "msg": "Insufficient funds in privacy pool"
     },
     {
       "code": 6016,
-      "name": "WithdrawNotReady",
+      "name": "withdrawNotReady",
       "msg": "Withdrawal not ready yet. Please wait for delay period"
     },
     {
       "code": 6017,
-      "name": "AlreadyClaimed",
+      "name": "alreadyClaimed",
       "msg": "Withdrawal already claimed"
     },
     {
       "code": 6018,
-      "name": "BatchTooSmall",
+      "name": "batchTooSmall",
       "msg": "Batch too small - need at least 1 withdrawal (2 accounts)"
     },
     {
       "code": 6019,
-      "name": "BatchInvalidPairs",
+      "name": "batchInvalidPairs",
       "msg": "Batch accounts must be pairs (recipient + pending)"
     },
     {
       "code": 6020,
-      "name": "BatchTooLarge",
+      "name": "batchTooLarge",
       "msg": "Batch too large - max 5 withdrawals (10 accounts)"
     },
     {
       "code": 6021,
-      "name": "InvalidChurnIndex",
+      "name": "invalidChurnIndex",
       "msg": "Invalid churn vault index (must be 0, 1, or 2)"
     },
     {
       "code": 6022,
-      "name": "InsufficientChurnFunds",
+      "name": "insufficientChurnFunds",
       "msg": "Insufficient funds in churn vault"
     },
     {
       "code": 6023,
-      "name": "InvalidSignatureInstruction",
+      "name": "invalidSignatureInstruction",
       "msg": "Invalid ed25519 signature instruction"
     },
     {
       "code": 6024,
-      "name": "SignerMismatch",
+      "name": "signerMismatch",
       "msg": "Signer does not match pending withdrawal recipient"
     },
     {
       "code": 6025,
-      "name": "InvalidClaimMessage",
+      "name": "invalidClaimMessage",
       "msg": "Invalid claim message format (expected 'claim:<pda>')"
     },
     {
       "code": 6026,
-      "name": "NullifierAlreadyUsed",
+      "name": "nullifierAlreadyUsed",
       "msg": "Nullifier has already been used (double-spend attempt)"
     },
     {
       "code": 6027,
-      "name": "InvalidCommitmentProof",
+      "name": "invalidCommitmentProof",
       "msg": "Invalid commitment proof - preimage does not match stored commitment"
     },
     {
       "code": 6028,
-      "name": "CommitmentAlreadySpent",
+      "name": "commitmentAlreadySpent",
       "msg": "Commitment has already been spent"
     },
     {
       "code": 6029,
-      "name": "InviteCodeTooLong",
+      "name": "inviteCodeTooLong",
       "msg": "Invite code too long (max 16 chars)"
     },
     {
       "code": 6030,
-      "name": "InviteCodeTooShort",
+      "name": "inviteCodeTooShort",
       "msg": "Invite code too short (min 6 chars)"
     },
     {
       "code": 6031,
-      "name": "InviteNotPending",
+      "name": "inviteNotPending",
       "msg": "Invite is not in pending status"
     },
     {
       "code": 6032,
-      "name": "StealthAddressRequired",
+      "name": "stealthAddressRequired",
       "msg": "Stealth address is required"
     },
     {
       "code": 6033,
-      "name": "InviteNotFound",
+      "name": "inviteNotFound",
       "msg": "Invite not found"
     }
   ],
   "types": [
     {
-      "name": "Campaign",
+      "name": "campaign",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2519,7 +2525,7 @@
             "type": "pubkey"
           },
           {
-            "name": "campaign_id",
+            "name": "campaignId",
             "type": "string"
           },
           {
@@ -2535,11 +2541,11 @@
             "type": "u64"
           },
           {
-            "name": "total_raised",
+            "name": "totalRaised",
             "type": "u64"
           },
           {
-            "name": "donor_count",
+            "name": "donorCount",
             "type": "u64"
           },
           {
@@ -2550,56 +2556,56 @@
             "name": "status",
             "type": {
               "defined": {
-                "name": "CampaignStatus"
+                "name": "campaignStatus"
               }
             }
           },
           {
-            "name": "created_at",
+            "name": "createdAt",
             "type": "i64"
           },
           {
-            "name": "vault_bump",
+            "name": "vaultBump",
             "type": "u8"
           },
           {
-            "name": "campaign_bump",
+            "name": "campaignBump",
             "type": "u8"
           },
           {
-            "name": "stealth_meta_address",
+            "name": "stealthMetaAddress",
             "type": "string"
           },
           {
-            "name": "stealth_donations",
+            "name": "stealthDonations",
             "type": "u64"
           },
           {
-            "name": "stealth_total",
+            "name": "stealthTotal",
             "type": "u64"
           }
         ]
       }
     },
     {
-      "name": "CampaignStatus",
+      "name": "campaignStatus",
       "type": {
         "kind": "enum",
         "variants": [
           {
-            "name": "Active"
+            "name": "active"
           },
           {
-            "name": "Closed"
+            "name": "closed"
           },
           {
-            "name": "Completed"
+            "name": "completed"
           }
         ]
       }
     },
     {
-      "name": "ChurnVaultState",
+      "name": "churnVaultState",
       "docs": [
         "State for a churn vault (internal mixing vault)",
         "PRIVACY: Enables micro-movements that break graph heuristics"
@@ -2608,15 +2614,15 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "vault_index",
+            "name": "vaultIndex",
             "type": "u8"
           },
           {
-            "name": "total_churned",
+            "name": "totalChurned",
             "type": "u64"
           },
           {
-            "name": "churn_count",
+            "name": "churnCount",
             "type": "u64"
           },
           {
@@ -2624,14 +2630,14 @@
             "type": "u8"
           },
           {
-            "name": "vault_bump",
+            "name": "vaultBump",
             "type": "u8"
           }
         ]
       }
     },
     {
-      "name": "CommitmentPDA",
+      "name": "commitmentPda",
       "docs": [
         "Individual PDA for each commitment",
         "Created when a private deposit is made",
@@ -2669,7 +2675,7 @@
       }
     },
     {
-      "name": "Invite",
+      "name": "invite",
       "docs": [
         "Invite account - stores invitation for a recipient to join a payroll batch"
       ],
@@ -2681,7 +2687,7 @@
             "type": "pubkey"
           },
           {
-            "name": "invite_code",
+            "name": "inviteCode",
             "type": "string"
           },
           {
@@ -2693,23 +2699,23 @@
             "type": "pubkey"
           },
           {
-            "name": "recipient_stealth_address",
+            "name": "recipientStealthAddress",
             "type": "string"
           },
           {
             "name": "status",
             "type": {
               "defined": {
-                "name": "InviteStatus"
+                "name": "inviteStatus"
               }
             }
           },
           {
-            "name": "created_at",
+            "name": "createdAt",
             "type": "i64"
           },
           {
-            "name": "accepted_at",
+            "name": "acceptedAt",
             "type": "i64"
           },
           {
@@ -2720,24 +2726,24 @@
       }
     },
     {
-      "name": "InviteStatus",
+      "name": "inviteStatus",
       "type": {
         "kind": "enum",
         "variants": [
           {
-            "name": "Pending"
+            "name": "pending"
           },
           {
-            "name": "Accepted"
+            "name": "accepted"
           },
           {
-            "name": "Revoked"
+            "name": "revoked"
           }
         ]
       }
     },
     {
-      "name": "NullifierPDA",
+      "name": "nullifierPda",
       "docs": [
         "Individual PDA for each used nullifier",
         "Created when a private withdrawal is made",
@@ -2756,7 +2762,7 @@
             }
           },
           {
-            "name": "used_at",
+            "name": "usedAt",
             "type": "i64"
           },
           {
@@ -2767,7 +2773,7 @@
       }
     },
     {
-      "name": "PendingWithdraw",
+      "name": "pendingWithdraw",
       "docs": [
         "A pending withdrawal request with time delay",
         "PRIVACY: Only stores recipient (stealth address), not sender"
@@ -2784,11 +2790,11 @@
             "type": "u64"
           },
           {
-            "name": "requested_at",
+            "name": "requestedAt",
             "type": "i64"
           },
           {
-            "name": "available_at",
+            "name": "availableAt",
             "type": "i64"
           },
           {
@@ -2803,7 +2809,7 @@
       }
     },
     {
-      "name": "PrivacyPool",
+      "name": "privacyPool",
       "docs": [
         "The global privacy pool that holds aggregated funds",
         "PRIVACY: Only stores aggregate stats, no individual deposit tracking"
@@ -2812,23 +2818,23 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "total_deposited",
+            "name": "totalDeposited",
             "type": "u64"
           },
           {
-            "name": "total_withdrawn",
+            "name": "totalWithdrawn",
             "type": "u64"
           },
           {
-            "name": "deposit_count",
+            "name": "depositCount",
             "type": "u64"
           },
           {
-            "name": "withdraw_count",
+            "name": "withdrawCount",
             "type": "u64"
           },
           {
-            "name": "churn_count",
+            "name": "churnCount",
             "type": "u64"
           },
           {
@@ -2836,14 +2842,14 @@
             "type": "u8"
           },
           {
-            "name": "vault_bump",
+            "name": "vaultBump",
             "type": "u8"
           }
         ]
       }
     },
     {
-      "name": "StealthRegistry",
+      "name": "stealthRegistry",
       "docs": [
         "Registry entry for a stealth payment",
         "Stores metadata so recipient can scan and identify their payments"
@@ -2856,11 +2862,11 @@
             "type": "pubkey"
           },
           {
-            "name": "stealth_address",
+            "name": "stealthAddress",
             "type": "pubkey"
           },
           {
-            "name": "ephemeral_pub_key",
+            "name": "ephemeralPubKey",
             "type": "string"
           },
           {
@@ -2879,4 +2885,4 @@
       }
     }
   ]
-}
+};

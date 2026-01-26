@@ -1,11 +1,15 @@
 'use client';
 
-import { Users, Clock, Target, Shield, Lock, Eye, TrendingUp, Zap } from 'lucide-react';
-import { Campaign, PRIVACY_LABELS, PrivacyLevel } from '../lib/types';
+import { Users, Clock, Target, Shield, Lock, Eye, TrendingUp, Zap, DollarSign, Briefcase, UserPlus } from 'lucide-react';
+import { PayrollBatch, PRIVACY_LABELS, PrivacyLevel } from '../lib/types';
+
+// Legacy alias for backwards compatibility
+type Campaign = PayrollBatch;
 
 interface CampaignCardProps {
   campaign: Campaign;
   onSupport: (campaign: Campaign) => void;
+  onInvite?: (campaign: Campaign) => void;
   featured?: boolean;
 }
 
@@ -31,19 +35,24 @@ function getPrivacyIcon(level: PrivacyLevel) {
   }
 }
 
-function getUrgencyLabel(daysLeft: number): { label: string; urgent: boolean } {
-  if (daysLeft <= 0) return { label: 'Ended', urgent: false };
-  if (daysLeft <= 3) return { label: `${daysLeft}d left`, urgent: true };
+function getStatusLabel(daysLeft: number): { label: string; urgent: boolean } {
+  if (daysLeft <= 0) return { label: 'Completed', urgent: false };
+  if (daysLeft <= 3) return { label: `${daysLeft}d remaining`, urgent: true };
   if (daysLeft <= 7) return { label: `${daysLeft} days left`, urgent: true };
   return { label: `${daysLeft} days left`, urgent: false };
 }
 
-export function CampaignCard({ campaign, onSupport, featured = false }: CampaignCardProps) {
-  const progress = Math.min(100, Math.round((campaign.raised / campaign.goal) * 100));
+export function CampaignCard({ campaign, onSupport, onInvite, featured = false }: CampaignCardProps) {
+  // Support both old (raised/goal) and new (totalPaid/budget) field names
+  const totalPaid = (campaign as any).totalPaid ?? campaign.raised ?? 0;
+  const budget = (campaign as any).budget ?? campaign.goal ?? 1;
+  const recipients = (campaign as any).recipients ?? campaign.supporters ?? 0;
+
+  const progress = Math.min(100, Math.round((totalPaid / budget) * 100));
   const privacyLevel = (campaign.privacyLevel || campaign.privacy || 'SEMI') as PrivacyLevel;
   const PrivacyIcon = getPrivacyIcon(privacyLevel);
-  const urgency = getUrgencyLabel(campaign.daysLeft ?? 0);
-  const isFullyFunded = progress >= 100;
+  const status = getStatusLabel(campaign.daysLeft ?? 0);
+  const isComplete = progress >= 100;
 
   return (
     <div
@@ -63,7 +72,7 @@ export function CampaignCard({ campaign, onSupport, featured = false }: Campaign
         <div className="absolute top-0 right-0">
           <div className="bg-white text-black text-[10px] font-bold px-3 py-1 rounded-bl-xl flex items-center gap-1">
             <TrendingUp className="w-3 h-3" />
-            TRENDING
+            IN PROGRESS
           </div>
         </div>
       )}
@@ -92,13 +101,13 @@ export function CampaignCard({ campaign, onSupport, featured = false }: Campaign
 
           <div
             className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs ${
-              urgency.urgent
+              status.urgent
                 ? 'bg-white/[0.1] text-white'
                 : 'bg-white/[0.03] text-white/40'
             }`}
           >
             <Clock className="w-3 h-3" />
-            <span>{urgency.label}</span>
+            <span>{status.label}</span>
           </div>
         </div>
 
@@ -118,7 +127,7 @@ export function CampaignCard({ campaign, onSupport, featured = false }: Campaign
           <div className="relative h-2 bg-white/[0.06] rounded-full overflow-hidden mb-3">
             <div
               className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${
-                isFullyFunded
+                isComplete
                   ? 'bg-gradient-to-r from-white to-white/80'
                   : 'bg-white'
               }`}
@@ -135,17 +144,17 @@ export function CampaignCard({ campaign, onSupport, featured = false }: Campaign
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-bold text-white">{campaign.raised.toFixed(2)}</span>
+                <span className="text-2xl font-bold text-white">{totalPaid.toFixed(2)}</span>
                 <span className="text-white/40 text-sm">SOL</span>
               </div>
               <span className="text-[10px] text-white/30 uppercase tracking-wider">
-                of {campaign.goal} SOL goal
+                of {budget} SOL budget
               </span>
             </div>
 
             <div className="text-right">
               <div className="text-2xl font-bold text-white">{progress}%</div>
-              <span className="text-[10px] text-white/30 uppercase tracking-wider">funded</span>
+              <span className="text-[10px] text-white/30 uppercase tracking-wider">distributed</span>
             </div>
           </div>
         </div>
@@ -155,28 +164,40 @@ export function CampaignCard({ campaign, onSupport, featured = false }: Campaign
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 text-white/40">
               <Users className="w-4 h-4" />
-              <span className="text-sm">{formatNumber(campaign.supporters)}</span>
-              <span className="text-xs text-white/30">backers</span>
+              <span className="text-sm">{formatNumber(recipients)}</span>
+              <span className="text-xs text-white/30">recipients</span>
             </div>
           </div>
 
-          <button
-            onClick={() => onSupport(campaign)}
-            className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-[0.98] flex items-center gap-2 ${
-              isFullyFunded
-                ? 'bg-white/[0.1] text-white/60 hover:bg-white/[0.15]'
-                : 'bg-white text-black hover:bg-white/90'
-            }`}
-          >
-            {isFullyFunded ? (
-              'Fully Funded'
-            ) : (
-              <>
-                <Zap className="w-4 h-4" />
-                Support
-              </>
+          <div className="flex items-center gap-2">
+            {onInvite && (
+              <button
+                onClick={() => onInvite(campaign)}
+                className="px-4 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-[0.98] flex items-center gap-2 bg-white/[0.05] text-white/70 hover:bg-white/[0.1] hover:text-white border border-white/[0.06]"
+              >
+                <UserPlus className="w-4 h-4" />
+                Invite
+              </button>
             )}
-          </button>
+
+            <button
+              onClick={() => onSupport(campaign)}
+              className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-[0.98] flex items-center gap-2 ${
+                isComplete
+                  ? 'bg-white/[0.1] text-white/60 hover:bg-white/[0.15]'
+                  : 'bg-white text-black hover:bg-white/90'
+              }`}
+            >
+              {isComplete ? (
+                'Completed'
+              ) : (
+                <>
+                  <DollarSign className="w-4 h-4" />
+                  Add Payment
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 

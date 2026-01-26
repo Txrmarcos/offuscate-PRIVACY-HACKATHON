@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Eye, Lock, ArrowRight, Loader2, Binary, Info, Zap, Clock, Users } from 'lucide-react';
+import { X, Eye, Lock, ArrowRight, Loader2, Binary, Info, Zap, Clock, Users, DollarSign, Shield } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useConnection } from '@solana/wallet-adapter-react';
@@ -12,7 +12,7 @@ import {
   TransactionInstruction,
   PublicKey,
 } from '@solana/web3.js';
-import { Campaign, PrivacyLevel } from '../lib/types';
+import { PayrollBatch, PrivacyLevel } from '../lib/types';
 import { useProgram, getCampaignPDAs } from '../lib/program';
 import {
   generateStealthAddress,
@@ -24,6 +24,9 @@ import { queuePrivateDonation, type BatchDonationResult } from '../lib/privacy/b
 import { triggerOffuscation } from './WaveMeshBackground';
 import { FullScreenPrivacyAnimation } from './PrivacyGraphAnimation';
 
+// Legacy alias for backwards compatibility
+type Campaign = PayrollBatch;
+
 const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 
 interface DonationModalProps {
@@ -31,7 +34,7 @@ interface DonationModalProps {
   onClose: () => void;
 }
 
-// Only show privacy options that ACTUALLY send to the campaign
+// Privacy options with B2B terminology
 const privacyOptions: {
   level: PrivacyLevel;
   title: string;
@@ -44,9 +47,9 @@ const privacyOptions: {
 }[] = [
   {
     level: 'ZK_COMPRESSED',
-    title: 'ZK Private',
-    description: 'Donations batched together. No timing or address link. Maximum anonymity.',
-    shortDesc: 'Fully anonymous',
+    title: 'Maximum Privacy',
+    description: 'Payments batched together. No timing or address link. Fully unlinkable.',
+    shortDesc: 'ZK Protected',
     icon: Binary,
     badge: 'Devnet',
     tag: 'Recommended',
@@ -54,18 +57,18 @@ const privacyOptions: {
   },
   {
     level: 'PRIVATE',
-    title: 'ShadowWire',
-    description: 'Maximum anonymity. Both your identity AND the amount are hidden.',
-    shortDesc: 'Fully anonymous',
+    title: 'Private',
+    description: 'Cryptographically hidden sender and amount. Enterprise-grade privacy.',
+    shortDesc: 'Sender hidden',
     icon: Lock,
     badge: 'Mainnet',
     privacyScore: 100,
   },
   {
     level: 'PUBLIC',
-    title: 'Public',
-    description: 'Anyone can see you donated. Your wallet is linked forever.',
-    shortDesc: 'Fully exposed',
+    title: 'Standard',
+    description: 'Visible on-chain. Use when transparency is required for compliance.',
+    shortDesc: 'Auditable',
     icon: Eye,
     privacyScore: 0,
   },
@@ -99,7 +102,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
           setCampaignMetaAddress(campaignData.stealthMetaAddress);
         }
       } catch (err) {
-        console.error('Failed to load campaign meta:', err);
+        console.error('Failed to load batch meta:', err);
       } finally {
         setLoadingMeta(false);
       }
@@ -107,7 +110,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
     loadCampaignMeta();
   }, [campaign.id, fetchCampaign]);
 
-  const handleDonate = async () => {
+  const handlePayment = async () => {
     if (!connected || !publicKey || !signTransaction) {
       setVisible(true);
       return;
@@ -147,7 +150,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         const result = await privateDonation(shadowWallet, vaultAddress, amountSol);
 
         if (!result.success) {
-          throw new Error(result.error || 'Private donation failed');
+          throw new Error(result.error || 'Private payment failed');
         }
 
         setTxSignature(result.signature!);
@@ -163,10 +166,10 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
           return;
         }
 
-        // Use batch donation system for TRUE privacy
-        // 1. Deposit to privacy pool (breaks sender link)
+        // Use batch payment system for TRUE privacy
+        // 1. Deposit to payroll pool (breaks sender link)
         // 2. Queue with relayer for batch processing (breaks timing link)
-        // 3. Relayer processes in batch later (no link between donor and campaign)
+        // 3. Relayer processes in batch later (no link between sender and recipient)
 
         const result = await queuePrivateDonation(
           privateDeposit,
@@ -178,7 +181,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         );
 
         if (!result.success) {
-          throw new Error(result.error || 'Private donation failed');
+          throw new Error(result.error || 'Private payment failed');
         }
 
         // Show queued status instead of immediate success
@@ -189,36 +192,36 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         triggerOffuscation();
 
       } else {
-        // PUBLIC - direct donation to campaign vault
+        // STANDARD - direct payment to batch vault
         const sig = await donate(campaign.id, amountSol);
         setTxSignature(sig);
         setIsDone(true);
         triggerOffuscation();
       }
     } catch (err: any) {
-      console.error('Donation failed:', err);
-      setError(err.message || 'Donation failed');
+      console.error('Payment failed:', err);
+      setError(err.message || 'Payment failed');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Queued batch donation success screen
+  // Queued batch payment success screen
   if (isDone && isQueued && batchResult) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
         <div className="relative w-full max-w-md bg-[#0a0a0a] border border-white/[0.08] rounded-2xl p-8 text-center">
-          <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-green-500/10 flex items-center justify-center">
-            <Clock className="w-8 h-8 text-green-400" />
+          <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-white/[0.05] flex items-center justify-center">
+            <Clock className="w-8 h-8 text-white" />
           </div>
 
           <h2 className="text-2xl font-bold text-white mb-2">
-            Donation Queued
+            Payment Queued
           </h2>
 
           <p className="text-white/60 mb-6">
-            Your {amount} SOL is now in the privacy pool. It will be sent to <strong className="text-white">{campaign.title}</strong> in the next batch.
+            Your {amount} SOL is now in the payroll pool. It will be distributed to <strong className="text-white">{campaign.title}</strong> in the next batch settlement.
           </p>
 
           <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 mb-6">
@@ -227,26 +230,26 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
               <span className="text-white font-mono">#{batchResult.queuePosition}</span>
             </div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-white/40 text-sm">Estimated Processing</span>
+              <span className="text-white/40 text-sm">Estimated Settlement</span>
               <span className="text-white font-mono">
                 {batchResult.estimatedProcessingTime ? `~${Math.ceil(batchResult.estimatedProcessingTime / 60)} min` : '< 5 min'}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-white/40 text-sm">Donation ID</span>
+              <span className="text-white/40 text-sm">Payment ID</span>
               <span className="text-white/60 font-mono text-xs">
                 {batchResult.donationId?.slice(0, 12)}...
               </span>
             </div>
           </div>
 
-          <div className="bg-green-500/5 border border-green-500/10 rounded-xl p-4 mb-6">
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 mb-6">
             <div className="flex items-start gap-3">
-              <Users className="w-5 h-5 text-green-400/80 flex-shrink-0 mt-0.5" />
+              <Shield className="w-5 h-5 text-white/50 flex-shrink-0 mt-0.5" />
               <div className="text-left">
-                <p className="text-green-400/90 text-sm font-medium mb-1">Maximum Privacy</p>
-                <p className="text-green-400/60 text-xs">
-                  Your donation will be processed together with others. No one can link your wallet to this campaign.
+                <p className="text-white/70 text-sm font-medium mb-1">Maximum Privacy</p>
+                <p className="text-white/40 text-xs">
+                  Your payment will be processed with others. The recipient cannot link your treasury to this payment.
                 </p>
               </div>
             </div>
@@ -259,7 +262,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
               rel="noopener noreferrer"
               className="text-white/30 text-xs hover:text-white/50 transition-colors"
             >
-              View deposit tx
+              View pool deposit
             </a>
           )}
 
@@ -304,14 +307,14 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         </button>
 
         <h2 className="text-xl font-semibold text-white mb-2">
-          Support {campaign.title}
+          Add Payment to {campaign.title}
         </h2>
 
         <p className="text-white/40 text-sm mb-2">
-          Help this cause. Keep your identity private.
+          Distribute funds privately to recipients.
         </p>
         <p className="text-white/25 text-xs mb-6">
-          Your SOL goes directly to the campaign. Your wallet stays hidden.
+          Payment goes to the batch vault. Recipients claim through private addresses.
         </p>
 
         {/* Amount input */}
@@ -385,7 +388,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
 
                 {/* Tag */}
                 {option.tag && (
-                  <p className="text-green-400/80 text-[10px] mt-2 uppercase tracking-wider">{option.tag}</p>
+                  <p className="text-white/50 text-[10px] mt-2 uppercase tracking-wider">{option.tag}</p>
                 )}
               </button>
             ))}
@@ -405,9 +408,9 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
             <div className="flex-1">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-white text-sm font-medium">
-                  {selectedPrivacy === 'ZK_COMPRESSED' ? '🛡️ Batch Anonymous Donation' :
-                   selectedPrivacy === 'PRIVATE' ? '👻 Anonymous Donation' :
-                   '👁️ Exposed Donation'}
+                  {selectedPrivacy === 'ZK_COMPRESSED' ? 'Batch Private Payment' :
+                   selectedPrivacy === 'PRIVATE' ? 'Private Payment' :
+                   'Standard Payment'}
                 </p>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-white/30">Privacy</span>
@@ -426,11 +429,11 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
               </div>
               <p className="text-white/40 text-xs">
                 {selectedPrivacy === 'ZK_COMPRESSED' ? (
-                  <>Funds go to privacy pool first, then processed in batch with others. <strong className="text-white/70">No timing or address link</strong> to this campaign.</>
+                  <>Funds go to payroll pool first, then settled in batch. <strong className="text-white/70">No timing or address link</strong> between treasury and recipients.</>
                 ) : selectedPrivacy === 'PRIVATE' ? (
-                  <>Complete anonymity. Your identity AND the amount are cryptographically hidden. Nobody knows you helped.</>
+                  <>Cryptographically protected. Sender identity and amount are hidden from on-chain observers.</>
                 ) : (
-                  <>⚠️ Your wallet will be <strong className="text-white/60">permanently visible</strong> as a donor on blockchain explorers. Anyone can see this.</>
+                  <>Standard on-chain transfer. Sender, recipient, and amount are visible for audit purposes.</>
                 )}
               </p>
             </div>
@@ -438,13 +441,13 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         </div>
 
         {/* Info about where funds go */}
-        <div className="mb-4 p-3 bg-green-500/5 border border-green-500/10 rounded-xl flex items-center gap-3">
-          <Zap className="w-4 h-4 text-green-400/60" />
-          <p className="text-[11px] text-green-400/70">
+        <div className="mb-4 p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex items-center gap-3">
+          <DollarSign className="w-4 h-4 text-white/40" />
+          <p className="text-[11px] text-white/50">
             {selectedPrivacy === 'ZK_COMPRESSED' ? (
-              <><strong>Batched for privacy:</strong> Funds go to privacy pool first, then processed in batch to hide timing. Typically delivered within 5 minutes.</>
+              <><strong className="text-white/70">Batch settlement:</strong> Funds enter payroll pool, then distributed privately. Typical settlement within 5 minutes.</>
             ) : (
-              <><strong>Direct to campaign:</strong> Your SOL goes straight to {campaign.title}'s vault. The campaign owner can withdraw anytime.</>
+              <><strong className="text-white/70">Direct to batch:</strong> Payment goes to {campaign.title} vault. Recipients can claim privately.</>
             )}
           </p>
         </div>
@@ -456,19 +459,19 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         )}
 
         <button
-          onClick={handleDonate}
+          onClick={handlePayment}
           disabled={isProcessing}
           className="w-full py-4 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98]"
         >
           {isProcessing ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              {selectedPrivacy === 'ZK_COMPRESSED' ? 'Depositing to privacy pool...' :
-               selectedPrivacy === 'PRIVATE' ? 'Making you invisible...' : 'Processing...'}
+              {selectedPrivacy === 'ZK_COMPRESSED' ? 'Processing to payroll pool...' :
+               selectedPrivacy === 'PRIVATE' ? 'Creating private payment...' : 'Processing...'}
             </>
           ) : connected ? (
             <>
-              {selectedPrivacy === 'PUBLIC' ? `Donate ${amount} SOL` : `Donate ${amount} SOL Privately`}
+              {selectedPrivacy === 'PUBLIC' ? `Pay ${amount} SOL` : `Pay ${amount} SOL Privately`}
               <ArrowRight className="w-4 h-4" />
             </>
           ) : (
@@ -479,7 +482,7 @@ export function DonationModal({ campaign, onClose }: DonationModalProps) {
         {/* Privacy reassurance */}
         {selectedPrivacy !== 'PUBLIC' && (
           <p className="text-center text-white/20 text-[10px] mt-3">
-            Your wallet address will never be linked to this donation
+            Your treasury address will not be linked to this payment on-chain
           </p>
         )}
       </div>

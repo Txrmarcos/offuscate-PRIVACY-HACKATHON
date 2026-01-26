@@ -2,20 +2,34 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Circle, Wallet } from 'lucide-react';
+import { Circle, Wallet, Building2, User, Settings } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useRole } from '../lib/role';
 
-const navLinks = [
-  { href: '/explore', label: 'Campaigns' },
-  { href: '/mixer', label: 'ShadowMix' },
+// Links por role
+const employerLinks = [
+  { href: '/explore', label: 'Payroll' },
+  { href: '/mixer', label: 'Treasury' },
+  { href: '/pool', label: 'Pool' },
   { href: '/dashboard', label: 'Dashboard' },
+];
+
+const recipientLinks = [
+  { href: '/mixer', label: 'Treasury' },
+  { href: '/pool', label: 'Pool' },
+  { href: '/dashboard', label: 'Dashboard' },
+];
+
+const defaultLinks = [
+  { href: '/pool', label: 'Pool' },
 ];
 
 export function Header() {
   const pathname = usePathname();
   const { connected, publicKey, disconnect } = useWallet();
   const { setVisible } = useWalletModal();
+  const { role } = useRole();
 
   const handleConnectClick = () => {
     if (connected) {
@@ -28,6 +42,13 @@ export function Header() {
   const shortAddress = publicKey
     ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}`
     : null;
+
+  // Escolher links baseado no role
+  const navLinks = role === 'employer'
+    ? employerLinks
+    : role === 'recipient'
+    ? recipientLinks
+    : defaultLinks;
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 p-4">
@@ -54,6 +75,20 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-3">
+          {/* Role indicator */}
+          {role && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] bg-white/[0.03] rounded-full border border-white/[0.06] text-white/50">
+              {role === 'employer' ? (
+                <Building2 className="w-3 h-3" />
+              ) : (
+                <User className="w-3 h-3" />
+              )}
+              <span className="uppercase tracking-wider">
+                {role === 'employer' ? 'Company' : 'Recipient'}
+              </span>
+            </div>
+          )}
+
           <span className="px-2 py-1 text-[10px] text-yellow-400/80 bg-yellow-500/10 rounded-full border border-yellow-500/20">
             devnet
           </span>

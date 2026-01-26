@@ -10,19 +10,21 @@ import {
   Loader2,
   CheckCircle,
   ExternalLink,
-  Sparkles,
-  Shield,
   Users,
+  Shield,
   Target,
   Zap,
   Clock,
   Binary,
+  Briefcase,
+  DollarSign,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PrivacyLevel } from '../lib/types';
 import { useProgram } from '../lib/program';
+import { useRole } from '../lib/role';
 import { triggerOffuscation } from '../components/WaveMeshBackground';
 
 const TOTAL_STEPS = 4;
@@ -30,39 +32,39 @@ const TOTAL_STEPS = 4;
 const privacyOptions = [
   {
     level: 'PUBLIC' as PrivacyLevel,
-    title: 'Public',
-    subtitle: 'Transparent',
-    description: 'Donors are visible. Best when you want to recognize supporters publicly.',
+    title: 'Standard',
+    subtitle: 'Basic Privacy',
+    description: 'Recipients visible on-chain. Use when transparency is required.',
     icon: Eye,
-    features: ['Donors visible', 'Amounts shown', 'Full transparency'],
+    features: ['Recipients visible', 'Amounts visible', 'Audit-friendly'],
   },
   {
     level: 'SEMI' as PrivacyLevel,
-    title: 'Semi-Private',
+    title: 'Enhanced',
     subtitle: 'Protected',
-    description: 'Donors stay anonymous. Perfect for sensitive causes.',
+    description: 'Hide individual amounts while keeping recipient addresses visible.',
     icon: Shield,
-    features: ['Donors hidden', 'Amounts visible', 'Safe for sensitive causes'],
+    features: ['Recipients visible', 'Amounts hidden', 'Compliant privacy'],
     recommended: true,
   },
   {
     level: 'ZK_COMPRESSED' as PrivacyLevel,
-    title: 'ZK Private',
-    subtitle: 'Maximum Privacy',
-    description: 'Complete anonymity. Nobody knows who helped.',
+    title: 'Maximum Privacy',
+    subtitle: 'Zero Knowledge',
+    description: 'Full confidentiality. Recipients and amounts are cryptographically hidden.',
     icon: Binary,
-    features: ['Donors hidden', 'Amounts hidden', 'Cryptographically private'],
+    features: ['Recipients hidden', 'Amounts hidden', 'ZK-protected'],
   },
 ];
 
 const privacyLabels: Record<PrivacyLevel, string> = {
-  PUBLIC: 'Public',
-  SEMI: 'Semi-Private',
-  PRIVATE: 'Fully Private',
-  ZK_COMPRESSED: 'ZK Compressed',
+  PUBLIC: 'Standard',
+  SEMI: 'Enhanced Privacy',
+  PRIVATE: 'Private',
+  ZK_COMPRESSED: 'Maximum Privacy',
 };
 
-function generateCampaignId(): string {
+function generateBatchId(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let id = '';
   for (let i = 0; i < 8; i++) {
@@ -76,16 +78,17 @@ export default function LaunchPage() {
   const { connected, publicKey } = useWallet();
   const { setVisible } = useWalletModal();
   const { createCampaign, isConnected } = useProgram();
+  const { refreshRole } = useRole();
 
   const [step, setStep] = useState(1);
   const [isLaunching, setIsLaunching] = useState(false);
   const [launchSuccess, setLaunchSuccess] = useState(false);
   const [txSignature, setTxSignature] = useState<string | null>(null);
-  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [batchId, setBatchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    goal: '',
+    budget: '',
     privacyLevel: 'SEMI' as PrivacyLevel,
     title: '',
     description: '',
@@ -119,33 +122,36 @@ export default function LaunchPage() {
     setError(null);
 
     try {
-      const id = generateCampaignId();
-      const goalSol = parseFloat(formData.goal) || 1;
+      const id = generateBatchId();
+      const budgetSol = parseFloat(formData.budget) || 1;
       const durationDays = parseInt(formData.durationDays) || 30;
       const deadlineTimestamp = Math.floor(Date.now() / 1000) + durationDays * 24 * 60 * 60;
 
       const signature = await createCampaign(
         id,
-        formData.title || 'Untitled Campaign',
+        formData.title || 'Untitled Payroll Batch',
         formData.description || 'No description',
-        goalSol,
+        budgetSol,
         deadlineTimestamp
       );
 
-      setCampaignId(id);
+      setBatchId(id);
       setTxSignature(signature);
       setLaunchSuccess(true);
       triggerOffuscation();
+
+      // Refresh role to detect employer status
+      await refreshRole();
     } catch (err: any) {
       console.error('Launch failed:', err);
-      setError(err.message || 'Failed to launch campaign');
+      setError(err.message || 'Failed to create payroll batch');
     } finally {
       setIsLaunching(false);
     }
   };
 
   // Success screen
-  if (launchSuccess && txSignature && campaignId) {
+  if (launchSuccess && txSignature && batchId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 py-20">
         <div className="w-full max-w-lg text-center">
@@ -159,21 +165,21 @@ export default function LaunchPage() {
             </div>
           </div>
 
-          <h1 className="text-4xl font-bold text-white mb-3">You're Live!</h1>
+          <h1 className="text-4xl font-bold text-white mb-3">Payroll Batch Created</h1>
           <p className="text-white/40 mb-3 text-lg">
-            Your campaign is now accepting donations
+            Your batch is ready for private payments
           </p>
           <p className="text-white/25 mb-8 text-sm">
-            Share it with supporters. They can help you anonymously.
+            Add recipients and distribute funds privately.
           </p>
 
-          {/* Campaign preview */}
+          {/* Batch preview */}
           <div className="rounded-2xl bg-white/[0.02] border border-white/[0.08] p-6 mb-6 text-left">
             <div className="flex items-start justify-between mb-4">
               <div>
-                <span className="text-[10px] text-white/30 uppercase tracking-wider">Campaign</span>
+                <span className="text-[10px] text-white/30 uppercase tracking-wider">Payroll Batch</span>
                 <h3 className="text-xl font-semibold text-white mt-1">
-                  {formData.title || 'Untitled Campaign'}
+                  {formData.title || 'Untitled Batch'}
                 </h3>
               </div>
               <div className="px-3 py-1 rounded-lg bg-white/[0.05] border border-white/[0.1]">
@@ -183,9 +189,9 @@ export default function LaunchPage() {
 
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="p-3 rounded-xl bg-white/[0.02]">
-                <Target className="w-4 h-4 text-white/30 mb-1" />
-                <div className="text-xl font-bold text-white">{formData.goal} SOL</div>
-                <span className="text-[10px] text-white/30 uppercase">Goal</span>
+                <DollarSign className="w-4 h-4 text-white/30 mb-1" />
+                <div className="text-xl font-bold text-white">{formData.budget} SOL</div>
+                <span className="text-[10px] text-white/30 uppercase">Budget</span>
               </div>
               <div className="p-3 rounded-xl bg-white/[0.02]">
                 <Clock className="w-4 h-4 text-white/30 mb-1" />
@@ -195,8 +201,8 @@ export default function LaunchPage() {
             </div>
 
             <div className="p-3 rounded-xl bg-white/[0.02] font-mono text-sm">
-              <span className="text-white/30">ID: </span>
-              <span className="text-white">{campaignId}</span>
+              <span className="text-white/30">Batch ID: </span>
+              <span className="text-white">{batchId}</span>
             </div>
           </div>
 
@@ -215,14 +221,14 @@ export default function LaunchPage() {
               onClick={() => router.push('/explore')}
               className="flex-1 py-4 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all active:scale-[0.98]"
             >
-              View All Campaigns
+              View All Batches
             </button>
             <button
               onClick={() => {
                 setLaunchSuccess(false);
                 setStep(1);
                 setFormData({
-                  goal: '',
+                  budget: '',
                   privacyLevel: 'SEMI',
                   title: '',
                   description: '',
@@ -265,32 +271,32 @@ export default function LaunchPage() {
       {/* Main content */}
       <div className="flex-1 flex flex-col items-center px-6 py-12">
         <div className="w-full max-w-3xl">
-          {/* Step 1: Set Target */}
+          {/* Step 1: Set Budget */}
           {step === 1 && (
             <div>
               <div className="mb-10">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] mb-4">
-                  <Target className="w-4 h-4 text-white/40" />
-                  <span className="text-xs text-white/40">Funding Goal</span>
+                  <DollarSign className="w-4 h-4 text-white/40" />
+                  <span className="text-xs text-white/40">Payroll Budget</span>
                 </div>
                 <h1 className="text-4xl font-bold text-white mb-3">
-                  How much do you need?
+                  Set the payment budget
                 </h1>
                 <p className="text-white/40 text-lg">
-                  Set a realistic goal. You can always exceed it.
+                  Define the total amount to be distributed to recipients.
                 </p>
               </div>
 
               <div className="mb-10">
                 <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-3">
-                  Target Amount
+                  Total Budget
                 </label>
                 <div className="relative">
                   <input
                     type="number"
-                    value={formData.goal}
+                    value={formData.budget}
                     onChange={(e) =>
-                      setFormData({ ...formData, goal: e.target.value })
+                      setFormData({ ...formData, budget: e.target.value })
                     }
                     placeholder="0.00"
                     className="w-full bg-transparent text-white text-5xl font-light border-b-2 border-white/[0.1] pb-4 focus:border-white/[0.3] transition-colors font-mono placeholder-white/10"
@@ -300,13 +306,13 @@ export default function LaunchPage() {
                   </span>
                 </div>
                 <p className="text-white/20 text-sm mt-2">
-                  ≈ ${((parseFloat(formData.goal) || 0) * 150).toFixed(2)} USD
+                  This budget will be distributed to your recipients privately
                 </p>
               </div>
 
               <div>
                 <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-4">
-                  Campaign Duration
+                  Payment Window
                 </label>
                 <div className="grid grid-cols-4 gap-3">
                   {['7', '14', '30', '60'].map((days) => (
@@ -323,12 +329,15 @@ export default function LaunchPage() {
                       <div className="text-xs text-white/30">days</div>
                       {days === '30' && formData.durationDays !== '30' && (
                         <span className="absolute -top-2 -right-2 px-2 py-0.5 bg-white text-black text-[9px] font-bold rounded-full">
-                          POPULAR
+                          COMMON
                         </span>
                       )}
                     </button>
                   ))}
                 </div>
+                <p className="text-white/20 text-sm mt-3">
+                  Recipients can claim payments within this window
+                </p>
               </div>
             </div>
           )}
@@ -339,16 +348,16 @@ export default function LaunchPage() {
               <div className="mb-10">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] mb-4">
                   <Shield className="w-4 h-4 text-white/40" />
-                  <span className="text-xs text-white/40">Protect Your Donors</span>
+                  <span className="text-xs text-white/40">Privacy Settings</span>
                 </div>
                 <h1 className="text-4xl font-bold text-white mb-3">
-                  How much protection do supporters need?
+                  Choose privacy level
                 </h1>
                 <p className="text-white/40 text-lg mb-2">
-                  Some causes need visible support. Others need quiet help.
+                  Protect salary information and recipient identities.
                 </p>
                 <p className="text-white/25 text-sm">
-                  Private donations encourage more giving from people who can't be public.
+                  Higher privacy prevents competitors from analyzing your payroll patterns.
                 </p>
               </div>
 
@@ -424,26 +433,26 @@ export default function LaunchPage() {
             </div>
           )}
 
-          {/* Step 3: Campaign Details */}
+          {/* Step 3: Batch Details */}
           {step === 3 && (
             <div>
               <div className="mb-10">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] mb-4">
-                  <Sparkles className="w-4 h-4 text-white/40" />
-                  <span className="text-xs text-white/40">Campaign Story</span>
+                  <Briefcase className="w-4 h-4 text-white/40" />
+                  <span className="text-xs text-white/40">Batch Details</span>
                 </div>
                 <h1 className="text-4xl font-bold text-white mb-3">
-                  Tell your story
+                  Name this batch
                 </h1>
                 <p className="text-white/40 text-lg">
-                  A compelling story inspires more support.
+                  Add a clear name and description for internal tracking.
                 </p>
               </div>
 
               <div className="space-y-8">
                 <div>
                   <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-3">
-                    Campaign Title
+                    Batch Name
                   </label>
                   <input
                     type="text"
@@ -451,32 +460,32 @@ export default function LaunchPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, title: e.target.value })
                     }
-                    placeholder="Give your campaign a memorable name"
+                    placeholder="e.g., January 2024 Engineering Payroll"
                     maxLength={64}
                     className="w-full bg-transparent text-white text-2xl font-medium border-b-2 border-white/[0.1] pb-3 focus:border-white/[0.3] transition-colors placeholder-white/20"
                   />
                   <div className="flex justify-between mt-2">
-                    <span className="text-xs text-white/20">Make it catchy and clear</span>
+                    <span className="text-xs text-white/20">For internal reference</span>
                     <span className="text-xs text-white/30">{formData.title.length}/64</span>
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-3">
-                    Description
+                    Description (Optional)
                   </label>
                   <textarea
                     value={formData.description}
                     onChange={(e) =>
                       setFormData({ ...formData, description: e.target.value })
                     }
-                    placeholder="Explain why you're raising funds and how they'll be used..."
+                    placeholder="Add notes about this payment batch..."
                     rows={5}
                     maxLength={256}
                     className="w-full bg-white/[0.02] text-white text-base border border-white/[0.08] rounded-2xl p-4 focus:border-white/[0.15] transition-colors placeholder-white/20 resize-none leading-relaxed"
                   />
                   <div className="flex justify-between mt-2">
-                    <span className="text-xs text-white/20">Be specific about your needs</span>
+                    <span className="text-xs text-white/20">Internal notes only</span>
                     <span className="text-xs text-white/30">{formData.description.length}/256</span>
                   </div>
                 </div>
@@ -493,10 +502,10 @@ export default function LaunchPage() {
                   <span className="text-xs text-white/40">Final Review</span>
                 </div>
                 <h1 className="text-4xl font-bold text-white mb-3">
-                  Ready to launch?
+                  Ready to create?
                 </h1>
                 <p className="text-white/40 text-lg">
-                  Review your campaign before going live on Solana.
+                  Review your payroll batch before deploying on-chain.
                 </p>
               </div>
 
@@ -514,7 +523,7 @@ export default function LaunchPage() {
                       </div>
                       <div>
                         <span className="text-[10px] text-white/30 uppercase tracking-wider">
-                          {privacyLabels[formData.privacyLevel]} Campaign
+                          {privacyLabels[formData.privacyLevel]} Payroll
                         </span>
                       </div>
                     </div>
@@ -525,7 +534,7 @@ export default function LaunchPage() {
                   </div>
 
                   <h3 className="text-2xl font-semibold text-white mb-2">
-                    {formData.title || 'Untitled Campaign'}
+                    {formData.title || 'Untitled Payroll Batch'}
                   </h3>
                   <p className="text-white/40 text-sm line-clamp-2">
                     {formData.description || 'No description provided'}
@@ -535,9 +544,9 @@ export default function LaunchPage() {
                 <div className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-[10px] text-white/30 uppercase tracking-wider">Goal</span>
+                      <span className="text-[10px] text-white/30 uppercase tracking-wider">Budget</span>
                       <div className="flex items-baseline gap-1 mt-1">
-                        <span className="text-3xl font-bold text-white">{formData.goal || '0'}</span>
+                        <span className="text-3xl font-bold text-white">{formData.budget || '0'}</span>
                         <span className="text-white/40">SOL</span>
                       </div>
                     </div>
@@ -552,6 +561,19 @@ export default function LaunchPage() {
                 </div>
               </div>
 
+              {/* Privacy info */}
+              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] mb-6">
+                <div className="flex items-start gap-3">
+                  <Shield className="w-5 h-5 text-white/40 mt-0.5" />
+                  <div>
+                    <p className="text-white/60 text-sm">
+                      Recipients will claim payments through private stealth addresses.
+                      Individual amounts will not be visible on-chain.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {!connected && (
                 <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.08] mb-6">
                   <div className="flex items-center gap-3">
@@ -560,7 +582,7 @@ export default function LaunchPage() {
                     </div>
                     <div>
                       <p className="text-white font-medium">Wallet Required</p>
-                      <p className="text-white/40 text-sm">Connect your wallet to launch on Solana</p>
+                      <p className="text-white/40 text-sm">Connect your wallet to deploy on Solana</p>
                     </div>
                   </div>
                 </div>
@@ -608,10 +630,10 @@ export default function LaunchPage() {
                 ) : connected ? (
                   <>
                     <Zap className="w-5 h-5" />
-                    Launch Campaign
+                    Create Payroll Batch
                   </>
                 ) : (
-                  'Connect Wallet to Launch'
+                  'Connect Wallet'
                 )}
               </button>
             )}

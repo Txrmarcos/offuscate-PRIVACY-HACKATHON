@@ -1,67 +1,94 @@
-import { Campaign, Activity } from './types';
+import { PayrollBatch, Payment } from './types';
 
-export const campaigns: Campaign[] = [
+// B2B Payroll Batches - Example data for enterprises
+export const payrollBatches: PayrollBatch[] = [
   {
     id: '1',
-    title: 'Journalist Protection Fund',
-    description: 'Legal support for independent journalists working in high-risk zones.',
+    title: 'January 2024 Engineering Payroll',
+    description: 'Monthly salary distribution for engineering team members.',
     privacyLevel: 'PRIVATE',
+    totalPaid: 342,
+    budget: 500,
+    recipients: 12,
+    // Legacy fields
     raised: 342,
     goal: 500,
-    supporters: 1200,
+    supporters: 12,
+    status: 'active',
   },
   {
     id: '2',
-    title: 'Open Source Privacy Tools',
-    description: 'Developing decentralized encryption libraries for the Solana ecosystem.',
-    privacyLevel: 'SEMI',
+    title: 'Q4 Contributor Bonuses',
+    description: 'Performance bonuses for Q4 contributors and contractors.',
+    privacyLevel: 'ZK_COMPRESSED',
+    totalPaid: 890,
+    budget: 1200,
+    recipients: 45,
     raised: 890,
     goal: 1200,
-    supporters: 4500,
+    supporters: 45,
+    status: 'active',
   },
   {
     id: '3',
-    title: 'Whistleblower Relief',
-    description: 'Providing secure financial pathways for transparency advocates.',
+    title: 'Vendor Payments - December',
+    description: 'Private payments to suppliers and service providers.',
     privacyLevel: 'PRIVATE',
+    totalPaid: 180,
+    budget: 250,
+    recipients: 8,
     raised: 180,
     goal: 250,
-    supporters: 850,
+    supporters: 8,
+    status: 'completed',
   },
   {
     id: '4',
-    title: 'Eco-Guardian DAO',
-    description: 'Protecting indigenous land rights through secure, private funding.',
-    privacyLevel: 'PUBLIC',
+    title: 'DAO Treasury Distribution',
+    description: 'Quarterly allocation to core team and grant recipients.',
+    privacyLevel: 'SEMI',
+    totalPaid: 1100,
+    budget: 2000,
+    recipients: 21,
     raised: 1100,
     goal: 2000,
-    supporters: 2100,
+    supporters: 21,
+    status: 'pending',
   },
 ];
 
-export const recentActivity: Activity[] = [
+// Legacy alias for backwards compatibility
+export const campaigns = payrollBatches;
+
+export const recentPayments: Payment[] = [
   {
     id: '1',
     type: 'incoming',
-    sender: 'Unknown Sender',
+    counterparty: 'Private Sender',
     amount: 25.0,
     privacyLevel: 'PRIVATE',
     timestamp: '2 mins ago',
+    description: 'Salary payment received',
   },
   {
     id: '2',
     type: 'outgoing',
-    sender: 'Human Rights Watch',
+    counterparty: 'Acme Corp',
     amount: 5.0,
     privacyLevel: 'SEMI',
     timestamp: '2 hours ago',
+    description: 'Vendor invoice payment',
   },
   {
     id: '3',
     type: 'incoming',
-    sender: 'Grant DAO',
+    counterparty: 'Treasury DAO',
     amount: 100.0,
-    privacyLevel: 'PUBLIC',
+    privacyLevel: 'ZK_COMPRESSED',
     timestamp: '1 day ago',
+    description: 'Grant disbursement',
   },
 ];
+
+// Legacy alias
+export const recentActivity = recentPayments;
