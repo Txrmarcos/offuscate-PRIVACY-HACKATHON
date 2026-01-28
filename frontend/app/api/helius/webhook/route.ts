@@ -1,16 +1,44 @@
 /**
- * Helius Webhook Receiver
+ * Helius Enhanced Webhooks Integration
+ *
+ * This module implements real-time transaction monitoring using Helius Webhooks.
+ * It enables instant detection of stealth payments without polling.
+ *
+ * Helius Features Used:
+ * - Enhanced Webhooks (enhancedDevnet type)
+ * - Real-time transaction streaming
+ * - Parsed transaction data with memo extraction
+ * - Support for 70+ transaction types
+ *
+ * Webhook Configuration:
+ * {
+ *   "webhookURL": "https://your-domain/api/helius/webhook",
+ *   "transactionTypes": ["TRANSFER"],
+ *   "accountAddresses": ["MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"],
+ *   "webhookType": "enhancedDevnet"
+ * }
+ *
+ * Stealth Payment Detection:
+ * - Parses memo for format: "stealth:<ephemeralPubKey>"
+ * - Extracts ephemeral key for recipient scanning
+ * - Creates real-time notifications
+ *
+ * Endpoints:
  *
  * POST /api/helius/webhook
  * - Receives real-time events from Helius
- * - Detects stealth payments
- * - Stores notifications for receivers
+ * - Detects stealth payments from memo
+ * - Creates notifications for recipients
  *
  * GET /api/helius/webhook
  * - Returns recent webhook events
+ * - Stealth payment statistics
  *
  * GET /api/helius/webhook?notifications=true&address=<address>
  * - Returns notifications for a specific address
+ * - Mark as read functionality
+ *
+ * @see https://docs.helius.dev/webhooks-and-websockets/webhooks
  */
 
 import { NextRequest, NextResponse } from 'next/server';

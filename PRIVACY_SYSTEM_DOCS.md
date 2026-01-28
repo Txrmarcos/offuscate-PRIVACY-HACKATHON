@@ -272,7 +272,115 @@ withdraw:
 
 ## User Flows
 
-### Employer Flow
+### Employer (Company) - Complete Feature Set
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           EMPLOYER USE CASES                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                        TREASURY (/mixer)                             │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • View Main Wallet balance                                          │    │
+│  │  • View Offuscate Wallet balance (privacy wallet)                    │    │
+│  │  • Transfer between wallets                                          │    │
+│  │  • Send payments with privacy options:                               │    │
+│  │      ├── Standard (public)                                           │    │
+│  │      ├── Offuscate Wallet (hide sender)                              │    │
+│  │      ├── Stealth Address (hide recipient)                            │    │
+│  │      ├── ZK Compression (hide amount)                                │    │
+│  │      └── ZK + Stealth (maximum privacy)                              │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                        PAYROLL (/payroll)                            │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • Create payroll batches (departments/teams)                        │    │
+│  │  • Generate invite codes with salary configuration                   │    │
+│  │  • Set salary rate (SOL/month)                                       │    │
+│  │  • Copy/share invite codes                                           │    │
+│  │  • Revoke pending invites                                            │    │
+│  │  • Fund batch vault                                                  │    │
+│  │  • View employees per batch                                          │    │
+│  │  • Monitor salary streaming                                          │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                       ACTIVITY (/dashboard)                          │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • View payment history                                              │    │
+│  │  • Filter by: All / Received / Sent / Private / Standard            │    │
+│  │  • Copy stealth meta address (one-click)                            │    │
+│  │  • View transaction signatures                                       │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                         POOL (/pool)                                 │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • Deposit to privacy pool (with commitment)                         │    │
+│  │  • Withdraw from pool (breaks link)                                  │    │
+│  │  • Gasless withdrawal via relayer                                    │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Employee (Recipient) - Complete Feature Set
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           EMPLOYEE USE CASES                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                         SALARY (/salary)                             │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  ONBOARDING:                                                         │    │
+│  │  • Accept invite code from employer                                  │    │
+│  │  • Generate stealth keypair (stored locally)                         │    │
+│  │                                                                       │    │
+│  │  WALLET MANAGEMENT:                                                  │    │
+│  │  • View Main Wallet balance                                          │    │
+│  │  • View Salary Wallet balance (stealth)                              │    │
+│  │  • Copy stealth meta address (share for payments)                    │    │
+│  │                                                                       │    │
+│  │  SALARY STREAMING:                                                   │    │
+│  │  • View monthly salary rate                                          │    │
+│  │  • View real-time accrued amount                                     │    │
+│  │  • Claim accrued salary                                              │    │
+│  │                                                                       │    │
+│  │  STEALTH PAYMENT SCANNER:                                            │    │
+│  │  • Auto-scan for incoming stealth payments                           │    │
+│  │  • Choose destination wallet (Salary/Main)                           │    │
+│  │  • Claim stealth payments                                            │    │
+│  │                                                                       │    │
+│  │  ANONYMOUS RECEIPTS:                                                 │    │
+│  │  • Create receipt (proof of payment)                                 │    │
+│  │  • Export receipt for sharing                                        │    │
+│  │  • Verify receipt (amount hidden)                                    │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                       ACTIVITY (/dashboard)                          │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • View payment history                                              │    │
+│  │  • Copy stealth meta address                                         │    │
+│  │  • View streaming salary status                                      │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                         POOL (/pool)                                 │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • Deposit to privacy pool                                           │    │
+│  │  • Withdraw to any address (breaks link)                             │    │
+│  │  • Additional mixing for privacy                                     │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Employer Flow (Step by Step)
 
 ```
 1. SETUP
@@ -307,7 +415,7 @@ withdraw:
    └── Send with maximum privacy combination
 ```
 
-### Employee Flow
+### Employee Flow (Step by Step)
 
 ```
 1. RECEIVE INVITE
@@ -353,6 +461,25 @@ withdraw:
 3. CLAIM PAYMENT
    ├── Select destination: Salary Wallet or Main Wallet
    └── Click claim to transfer funds
+```
+
+### Privacy Options Matrix
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         PRIVACY OPTIONS MATRIX                                │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│   OPTION              SENDER    RECIPIENT   AMOUNT    USE CASE                │
+│   ───────────────────────────────────────────────────────────────────────    │
+│   Standard            Visible   Visible     Visible   Public payments         │
+│   Offuscate Wallet    HIDDEN    Visible     Visible   Hide company identity   │
+│   Stealth Address     Visible   HIDDEN      Visible   Hide employee wallet    │
+│   ZK Compression      HIDDEN    Visible     HIDDEN    Hide amount             │
+│   ZK + Stealth        HIDDEN    HIDDEN      HIDDEN    MAXIMUM PRIVACY         │
+│   + Privacy Pool      BROKEN LINK between deposit and withdrawal              │
+│                                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---

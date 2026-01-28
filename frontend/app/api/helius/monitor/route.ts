@@ -1,14 +1,43 @@
 /**
- * Helius Address Monitoring API
+ * Helius Address Monitoring & Privacy Pool Analytics
+ *
+ * This module provides address monitoring and Privacy Pool analytics
+ * using Helius Enhanced Transactions API.
+ *
+ * Helius Features Used:
+ * - Enhanced Transactions API for address activity tracking
+ * - Transaction parsing for pool operation detection
+ * - Real-time balance queries via Helius RPC
+ *
+ * Monitored Address Types:
+ * - Stealth addresses (one-time payment addresses)
+ * - Batch vaults (payroll funding)
+ * - Campaigns (employer accounts)
+ * - Wallets (user wallets)
+ *
+ * Privacy Pool Analytics:
+ * - Deposit tracking with amounts
+ * - Withdrawal request/claim detection
+ * - Churn/unchurn operation monitoring
+ * - Total volume statistics
+ *
+ * Endpoints:
  *
  * POST /api/helius/monitor
  * - Add addresses to monitor (campaigns, stealth addresses, vaults)
+ * - Fetches initial activity from Helius
  *
  * GET /api/helius/monitor
  * - Get all monitored addresses with their activity
+ * - Stats by address type
+ *
+ * GET /api/helius/monitor?type=pool
+ * - Get Privacy Pool statistics and transaction history
  *
  * DELETE /api/helius/monitor?address=<address>
  * - Remove address from monitoring
+ *
+ * @see https://docs.helius.dev/solana-apis/enhanced-transactions-api
  */
 
 import { NextRequest, NextResponse } from 'next/server';

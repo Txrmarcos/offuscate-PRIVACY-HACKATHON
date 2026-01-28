@@ -6,6 +6,8 @@
 ![Anchor](https://img.shields.io/badge/Anchor-0.31.1-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![Privacy](https://img.shields.io/badge/Privacy-Maximum-purple)
+![Helius](https://img.shields.io/badge/Powered%20by-Helius-orange)
+![Light Protocol](https://img.shields.io/badge/ZK-Light%20Protocol-blue)
 
 ## Overview
 
@@ -27,6 +29,43 @@ Offuscate is a **B2B privacy payroll platform** that enables companies to pay em
 ```
 Program ID:  5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
 ```
+
+## Powered by Helius
+
+Offuscate uses **Helius** as core infrastructure for privacy-preserving payroll operations.
+
+| Helius Feature | Usage in Offuscate |
+|----------------|-------------------|
+| **Enhanced Transactions API** | Parse stealth payments, detect privacy levels, index transaction history |
+| **Enhanced Webhooks (Devnet)** | Real-time stealth payment detection and notifications |
+| **Helius RPC** | All blockchain operations including ZK compression |
+| **Transaction Enrichment** | Human-readable payment history with memo parsing |
+
+### Why Helius?
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 HELIUS PRIVACY DETECTION FLOW                    │
+├─────────────────────────────────────────────────────────────────┤
+│  1. Stealth payment sent with memo: "stealth:<ephemeralKey>"    │
+│                           ↓                                      │
+│  2. Helius Webhook receives transaction                          │
+│                           ↓                                      │
+│  3. parseStealthMemo() extracts ephemeral key                   │
+│                           ↓                                      │
+│  4. Notification created for recipient                          │
+│                           ↓                                      │
+│  5. Recipient scans & claims via Enhanced Transactions API      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Helius enables:**
+- Real-time detection of stealth payments via webhooks
+- Privacy level classification (public/semi-private/private)
+- Transaction history with enriched metadata
+- Fast RPC for ZK compression operations
+
+See [HELIUS_INTEGRATION.md](./HELIUS_INTEGRATION.md) for full documentation.
 
 ## Privacy Architecture
 
@@ -69,9 +108,272 @@ Program ID:  5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
 | **Activity** | `/dashboard` | Payment history, stealth address display |
 | **Pool** | `/pool` | Privacy pool access |
 
-## How It Works
+## Use Cases & User Flows
 
-### Employer Flow
+### Employer (Company) - Complete Feature Set
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           EMPLOYER USE CASES                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                        TREASURY (/mixer)                             │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • View Main Wallet balance                                          │    │
+│  │  • View Offuscate Wallet balance (privacy wallet)                    │    │
+│  │  • Transfer between wallets                                          │    │
+│  │  • Send payments with privacy options:                               │    │
+│  │      ├── Standard (public)                                           │    │
+│  │      ├── Offuscate Wallet (hide sender)                              │    │
+│  │      ├── Stealth Address (hide recipient)                            │    │
+│  │      ├── ZK Compression (hide amount)                                │    │
+│  │      └── ZK + Stealth (maximum privacy)                              │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                        PAYROLL (/payroll)                            │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • Create payroll batches (departments/teams)                        │    │
+│  │  • Generate invite codes with salary configuration                   │    │
+│  │  • Set salary rate (SOL/month)                                       │    │
+│  │  • Copy/share invite codes                                           │    │
+│  │  • Revoke pending invites                                            │    │
+│  │  • Fund batch vault                                                  │    │
+│  │  • View employees per batch                                          │    │
+│  │  • Monitor salary streaming                                          │    │
+│  │  • View total budget vs paid                                         │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                       ACTIVITY (/dashboard)                          │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • View payment history                                              │    │
+│  │  • Filter by: All / Received / Sent / Private / Standard            │    │
+│  │  • Copy stealth meta address (one-click)                            │    │
+│  │  • View transaction signatures                                       │    │
+│  │  • Monitor RPC status                                                │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                         POOL (/pool)                                 │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • Deposit to privacy pool (with commitment)                         │    │
+│  │  • Withdraw from pool (breaks link)                                  │    │
+│  │  • Gasless withdrawal via relayer                                    │    │
+│  │  • View pool balance                                                 │    │
+│  │  • View unspent notes                                                │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Employee (Recipient) - Complete Feature Set
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           EMPLOYEE USE CASES                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                         SALARY (/salary)                             │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  ONBOARDING:                                                         │    │
+│  │  • Accept invite code from employer                                  │    │
+│  │  • Generate stealth keypair (stored locally)                         │    │
+│  │  • Register stealth pubkey on-chain                                  │    │
+│  │                                                                       │    │
+│  │  WALLET MANAGEMENT:                                                  │    │
+│  │  • View Main Wallet balance                                          │    │
+│  │  • View Salary Wallet balance (stealth)                              │    │
+│  │  • Copy stealth meta address (share for payments)                    │    │
+│  │  • Transfer between wallets                                          │    │
+│  │                                                                       │    │
+│  │  SALARY STREAMING:                                                   │    │
+│  │  • View monthly salary rate                                          │    │
+│  │  • View real-time accrued amount                                     │    │
+│  │  • View total claimed to date                                        │    │
+│  │  • Claim accrued salary                                              │    │
+│  │                                                                       │    │
+│  │  STEALTH PAYMENT SCANNER:                                            │    │
+│  │  • Auto-scan for incoming stealth payments                           │    │
+│  │  • View found payments with amounts                                  │    │
+│  │  • Choose destination wallet (Salary/Main)                           │    │
+│  │  • Claim stealth payments                                            │    │
+│  │                                                                       │    │
+│  │  ANONYMOUS RECEIPTS:                                                 │    │
+│  │  • Create receipt (proof of payment)                                 │    │
+│  │  • Export receipt for sharing                                        │    │
+│  │  • Verify receipt authenticity                                       │    │
+│  │  • Amount remains hidden                                             │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                       ACTIVITY (/dashboard)                          │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • View payment history                                              │    │
+│  │  • Filter transactions                                               │    │
+│  │  • Copy stealth meta address                                         │    │
+│  │  • View streaming salary status                                      │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                         POOL (/pool)                                 │    │
+│  ├─────────────────────────────────────────────────────────────────────┤    │
+│  │  • Deposit claimed salary to pool                                    │    │
+│  │  • Withdraw to any address (breaks link)                             │    │
+│  │  • Gasless withdrawal                                                │    │
+│  │  • Additional mixing for privacy                                     │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Complete User Journey Diagrams
+
+#### Employer Journey
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         EMPLOYER COMPLETE JOURNEY                             │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+   │ Connect │────►│  Detected   │────►│   Treasury   │────►│   Payroll   │
+   │ Wallet  │     │ as Employer │     │   Overview   │     │  Management │
+   └─────────┘     └─────────────┘     └──────────────┘     └──────┬──────┘
+                                                                    │
+        ┌───────────────────────────────────────────────────────────┘
+        │
+        ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │                           PAYROLL SETUP                                   │
+   │                                                                           │
+   │   Create Batch ──► Generate Invites ──► Share Codes ──► Fund Vault       │
+   │        │                   │                  │              │            │
+   │        ▼                   ▼                  ▼              ▼            │
+   │   "Engineering"      "ABC123"           Email/Slack    10 SOL deposited   │
+   │   batch created      1000 SOL/mo                                          │
+   └──────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │                         SALARY STREAMING                                  │
+   │                                                                           │
+   │          Employee            Accrued                  Claimed             │
+   │          Accepts    ──►     Per Second    ──►      by Employee            │
+   │          Invite              ~385 lamports/s                              │
+   │                                                                           │
+   └──────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │                      PRIVATE PAYMENTS (Treasury)                          │
+   │                                                                           │
+   │   Select Wallet    Select Privacy      Enter Amount      Send Payment     │
+   │        │                  │                  │                │           │
+   │        ▼                  ▼                  ▼                ▼           │
+   │   Main/Offuscate   ZK+Stealth           0.5 SOL        Tx Confirmed      │
+   │                    (Maximum)                                              │
+   └──────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Employee Journey
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         EMPLOYEE COMPLETE JOURNEY                             │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   ┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+   │ Connect │────►│   Receive   │────►│    Accept    │────►│   Salary    │
+   │ Wallet  │     │   Invite    │     │    Invite    │     │    Page     │
+   └─────────┘     └─────────────┘     └──────────────┘     └──────┬──────┘
+                                              │                     │
+                                              ▼                     │
+                                    ┌─────────────────┐             │
+                                    │ Generate Stealth│             │
+                                    │ Keypair Locally │             │
+                                    └─────────────────┘             │
+                                                                    │
+        ┌───────────────────────────────────────────────────────────┘
+        │
+        ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │                         SALARY MANAGEMENT                                 │
+   │                                                                           │
+   │   ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────┐   │
+   │   │ View Accrued │    │    Claim     │    │ Funds go to Salary Wallet│   │
+   │   │   Salary     │───►│   Salary     │───►│   (Stealth Address)      │   │
+   │   │  Real-time   │    │              │    │                          │   │
+   │   └──────────────┘    └──────────────┘    └──────────────────────────┘   │
+   │                                                                           │
+   └──────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │                    RECEIVE STEALTH PAYMENTS                               │
+   │                                                                           │
+   │   Copy Stealth    Share with     Auto-Scan      Choose         Claim     │
+   │   Meta Address ──► Sender    ──► Detects    ──► Destination ──► Funds    │
+   │                                  Payment        Wallet                    │
+   │   st:viewPub:                                  Salary/Main                │
+   │   spendPub                                                                │
+   └──────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │                      PROOF OF PAYMENT (Receipts)                          │
+   │                                                                           │
+   │   Create         Export           Share with        Verify               │
+   │   Receipt   ──►  as JSON    ──►   Bank/Visa    ──►  Authenticity         │
+   │                                                                           │
+   │   Amount stays hidden - proves payment without revealing salary           │
+   └──────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │                      ADDITIONAL PRIVACY (Pool)                            │
+   │                                                                           │
+   │   Deposit to       Wait for         Withdraw to        Link is           │
+   │   Privacy Pool ──► Mixing      ──►  Any Address   ──►  Broken            │
+   │                                                                           │
+   └──────────────────────────────────────────────────────────────────────────┘
+```
+
+### Privacy Options Matrix
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         PRIVACY OPTIONS MATRIX                                │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│   OPTION              SENDER    RECIPIENT   AMOUNT    USE CASE                │
+│   ───────────────────────────────────────────────────────────────────────    │
+│                                                                               │
+│   Standard            Visible   Visible     Visible   Public payments         │
+│   ───────────────────────────────────────────────────────────────────────    │
+│                                                                               │
+│   Offuscate Wallet    HIDDEN    Visible     Visible   Hide company identity   │
+│   ───────────────────────────────────────────────────────────────────────    │
+│                                                                               │
+│   Stealth Address     Visible   HIDDEN      Visible   Hide employee wallet    │
+│   ───────────────────────────────────────────────────────────────────────    │
+│                                                                               │
+│   ZK Compression      HIDDEN    Visible     HIDDEN    Hide amount             │
+│   ───────────────────────────────────────────────────────────────────────    │
+│                                                                               │
+│   ZK + Stealth        HIDDEN    HIDDEN      HIDDEN    MAXIMUM PRIVACY         │
+│   ───────────────────────────────────────────────────────────────────────    │
+│                                                                               │
+│   + Privacy Pool      BROKEN LINK between deposit and withdrawal              │
+│                                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Simplified Flow Diagrams
+
+#### Employer Flow (Simple)
 
 ```
 1. Create Batch (department/team)
@@ -85,7 +387,7 @@ Program ID:  5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
 5. Salary streams automatically per second
 ```
 
-### Employee Flow
+#### Employee Flow (Simple)
 
 ```
 1. Receive invite code from employer
@@ -330,6 +632,12 @@ const result = await privateWithdrawRelayed(note, stealthKeypair);
 - @noble/curves (ECDH)
 - @noble/hashes (SHA256)
 - TailwindCSS
+
+**Infrastructure (Helius):**
+- Helius RPC (Devnet) - All blockchain operations
+- Enhanced Transactions API - Transaction indexing & parsing
+- Enhanced Webhooks - Real-time stealth payment detection
+- Transaction Enrichment - Privacy level classification
 
 ## Contributing
 

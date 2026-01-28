@@ -1,13 +1,30 @@
 /**
- * Helius Enhanced Transactions API
+ * Helius Enhanced Transactions API Integration
+ *
+ * This module leverages Helius Enhanced Transactions API to provide:
+ * - Human-readable transaction data with enriched metadata
+ * - Stealth payment detection through memo parsing
+ * - Privacy level classification (public/semi-private/private)
+ * - Transaction statistics and analytics
+ *
+ * Helius Features Used:
+ * - Enhanced Transactions API (https://api-devnet.helius.xyz/v0)
+ * - Transaction enrichment with parsed instructions
+ * - Memo program data extraction
+ * - Native and token transfer tracking
+ *
+ * Endpoints:
  *
  * GET /api/helius/transactions?wallet=<address>&limit=20
  * - Returns indexed transactions for a wallet address
  * - Detects stealth payments from memo
- * - Enriched transaction data
+ * - Enriched transaction data with privacy classification
  *
  * GET /api/helius/transactions?signature=<sig>
  * - Get details for a specific transaction
+ * - Full privacy analysis
+ *
+ * @see https://docs.helius.dev/solana-apis/enhanced-transactions-api
  */
 
 import { NextRequest, NextResponse } from 'next/server';

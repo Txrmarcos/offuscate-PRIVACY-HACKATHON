@@ -1,16 +1,42 @@
 /**
- * Helius Explorer API
+ * Helius Explorer API - Address & Transaction Analysis
  *
- * Provides explorer-like functionality for addresses and transactions
+ * This module provides comprehensive explorer functionality using
+ * Helius Enhanced APIs for deep transaction and address analysis.
+ *
+ * Helius Features Used:
+ * - Enhanced Transactions API for transaction parsing
+ * - RPC for balance and account queries
+ * - Token account enumeration
+ * - Transaction history with enriched metadata
+ *
+ * Address Analysis:
+ * - SOL balance and token holdings
+ * - Transaction history with stealth detection
+ * - Account type detection (PDA, program, wallet)
+ * - Stealth address identification
+ *
+ * Transaction Analysis:
+ * - Full instruction breakdown
+ * - Native and token transfer details
+ * - Account balance changes
+ * - Privacy level classification
+ * - Ephemeral key extraction for stealth payments
+ *
+ * Endpoints:
  *
  * GET /api/helius/explorer?address=<address>
- * - Get comprehensive address info (balance, tokens, history, NFTs)
+ * - Get comprehensive address info (balance, tokens, history)
+ * - Stealth activity analysis
  *
  * GET /api/helius/explorer?tx=<signature>
  * - Get detailed transaction breakdown
+ * - Privacy info with ephemeral key
  *
- * GET /api/helius/explorer/assets?address=<address>
- * - Get all assets (tokens, NFTs) for an address
+ * GET /api/helius/explorer?address=<address>&assets=true
+ * - Include token accounts and NFTs
+ *
+ * @see https://docs.helius.dev/solana-apis/enhanced-transactions-api
  */
 
 import { NextRequest, NextResponse } from 'next/server';

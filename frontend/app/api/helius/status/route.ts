@@ -1,13 +1,29 @@
 /**
- * Helius Status/Health API
+ * Helius RPC Health Monitoring
+ *
+ * This module monitors Helius RPC health and provides status information
+ * for the dashboard. Helius RPC is used for all blockchain operations
+ * including ZK compression via Light Protocol.
+ *
+ * Helius Features Used:
+ * - Helius Devnet RPC (https://devnet.helius-rpc.com)
+ * - Fast, reliable RPC with low latency
+ * - Supports ZK compression operations
  *
  * GET /api/helius/status
  *
  * Returns:
- * - RPC connection status
- * - Latency
- * - Current slot
- * - API configuration
+ * - RPC connection status (connected/disconnected)
+ * - Latency in milliseconds
+ * - Current slot number
+ * - Blockhash information
+ * - API key configuration status
+ *
+ * Used by:
+ * - Dashboard status indicator
+ * - Health checks before transactions
+ *
+ * @see https://docs.helius.dev/welcome/what-is-helius
  */
 
 import { NextResponse } from 'next/server';
