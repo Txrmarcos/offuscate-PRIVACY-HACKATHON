@@ -106,10 +106,82 @@ export interface InviteData {
   creator: PublicKey;
   recipient: PublicKey;
   recipientStealthAddress: string;
+  salaryRate: number;           // lamports per second (0 = no streaming)
   status: InviteStatus;
   createdAt: number;
   acceptedAt: number;
   bump: number;
+  // Computed for display
+  monthlySalary?: number;       // salary_rate * 30 days in SOL
+}
+
+// ============================================
+// INDEX-BASED STREAMING PAYROLL TYPES
+// ============================================
+
+export interface MasterVaultData {
+  authority: PublicKey;
+  batchCount: number;
+  totalEmployees: number;
+  totalDeposited: number;
+  totalPaid: number;
+  bump: number;
+}
+
+export type BatchStatus = 'Active' | 'Paused' | 'Closed';
+
+export interface PayrollBatchData {
+  masterVault: PublicKey;
+  owner: PublicKey;
+  index: number;
+  title: string;
+  employeeCount: number;
+  totalBudget: number;
+  totalPaid: number;
+  createdAt: number;
+  status: BatchStatus;
+  vaultBump: number;
+  batchBump: number;
+}
+
+export type EmployeeStatus = 'Active' | 'Paused' | 'Terminated';
+
+export interface EmployeeData {
+  batch: PublicKey;
+  wallet: PublicKey;
+  index: number;
+  stealthAddress: string;
+  salaryRate: number;        // lamports per second
+  startTime: number;
+  lastClaimedAt: number;
+  totalClaimed: number;
+  status: EmployeeStatus;
+  bump: number;
+  // Computed fields
+  accruedSalary?: number;    // current unclaimed amount
+  monthlySalary?: number;    // salary_rate * 30 days (for display)
+}
+
+// ============================================
+// ANONYMOUS RECEIPTS TYPES
+// ============================================
+
+export interface PaymentReceiptData {
+  employee: PublicKey;
+  batch: PublicKey;
+  employer: PublicKey;
+  commitment: Uint8Array;    // 32 bytes - hides amount
+  timestamp: number;
+  receiptIndex: number;
+  bump: number;
+}
+
+export interface ReceiptProof {
+  employeeWallet: PublicKey;
+  batchKey: PublicKey;
+  timestamp: number;
+  amount: number;            // Only revealed for full verification
+  secret: Uint8Array;        // 32 bytes - kept by employee
 }
 
 // Allowed withdrawal amounts (must match Anchor program)
@@ -231,6 +303,73 @@ export function getInvitePDA(inviteCode: string) {
     PROGRAM_ID
   );
   return { invitePda, bump };
+}
+
+// ============================================
+// INDEX-BASED STREAMING PAYROLL PDAs
+// ============================================
+
+export function getMasterVaultPDA() {
+  const [masterVaultPda, bump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('master_vault')],
+    PROGRAM_ID
+  );
+  return { masterVaultPda, bump };
+}
+
+export function getBatchPDA(masterVaultPda: PublicKey, index: number) {
+  const indexBuffer = Buffer.alloc(4);
+  indexBuffer.writeUInt32LE(index);
+
+  const [batchPda, bump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('batch'), masterVaultPda.toBuffer(), indexBuffer],
+    PROGRAM_ID
+  );
+  return { batchPda, bump };
+}
+
+export function getBatchVaultPDA(batchPda: PublicKey) {
+  const [batchVaultPda, bump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('batch_vault'), batchPda.toBuffer()],
+    PROGRAM_ID
+  );
+  return { batchVaultPda, bump };
+}
+
+export function getEmployeePDA(batchPda: PublicKey, index: number) {
+  const indexBuffer = Buffer.alloc(4);
+  indexBuffer.writeUInt32LE(index);
+
+  const [employeePda, bump] = PublicKey.findProgramAddressSync(
+    [Buffer.from('employee'), batchPda.toBuffer(), indexBuffer],
+    PROGRAM_ID
+  );
+  return { employeePda, bump };
+}
+
+// ============================================
+// ANONYMOUS RECEIPTS PDAs
+// ============================================
+
+export function getReceiptPDA(employeeWallet: PublicKey, batchPda: PublicKey, totalClaimed: number) {
+  // Write u64 in little-endian format (browser-compatible)
+  const totalClaimedBuffer = new Uint8Array(8);
+  let value = BigInt(totalClaimed);
+  for (let i = 0; i < 8; i++) {
+    totalClaimedBuffer[i] = Number(value & BigInt(0xff));
+    value = value >> BigInt(8);
+  }
+
+  const [receiptPda, bump] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from('receipt'),
+      employeeWallet.toBuffer(),
+      batchPda.toBuffer(),
+      Buffer.from(totalClaimedBuffer),
+    ],
+    PROGRAM_ID
+  );
+  return { receiptPda, bump };
 }
 
 // ============================================
@@ -845,18 +984,20 @@ export async function fetchStealthRegistries(
 
 /**
  * Create an invite for a recipient to join a payroll batch
+ * @param salaryRate - lamports per second (0 = no streaming, just invite)
  */
 export async function createInvite(
   program: Program,
   owner: PublicKey,
   campaignId: string,
-  inviteCode: string
+  inviteCode: string,
+  salaryRate: number = 0
 ): Promise<string> {
   const { campaignPda } = getCampaignPDAs(campaignId);
   const { invitePda } = getInvitePDA(inviteCode);
 
   const signature = await program.methods
-    .createInvite(inviteCode)
+    .createInvite(inviteCode, new BN(salaryRate))
     .accounts({
       owner,
       campaign: campaignPda,
@@ -869,7 +1010,7 @@ export async function createInvite(
 }
 
 /**
- * Accept an invite and register stealth address
+ * Accept an invite and register stealth address (simple version, no streaming)
  */
 export async function acceptInvite(
   program: Program,
@@ -884,6 +1025,54 @@ export async function acceptInvite(
     .accounts({
       recipient,
       invite: invitePda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Accept invite AND automatically add to streaming payroll
+ *
+ * PRIVACY FLOW:
+ * 1. Employee generates a stealth keypair LOCALLY
+ * 2. Passes the stealth PUBLIC KEY as employeeStealthPubkey
+ * 3. Employee account is created with wallet = stealth pubkey
+ * 4. Employee keeps stealth PRIVATE KEY locally
+ * 5. To claim salary, employee signs with stealth keypair
+ *
+ * @param payer - Who pays for the transaction (can be main wallet)
+ * @param employeeStealthPubkey - The PUBLIC KEY of locally generated stealth keypair
+ * @param inviteCode - The invite code
+ * @param stealthMetaAddress - Stealth meta address for receiving payments
+ * @param batchPda - The payroll batch PDA
+ * @param masterVaultPda - The master vault PDA
+ */
+export async function acceptInviteStreaming(
+  program: Program,
+  payer: PublicKey,
+  employeeStealthPubkey: PublicKey,
+  inviteCode: string,
+  stealthMetaAddress: string,
+  batchPda: PublicKey,
+  masterVaultPda: PublicKey,
+  batchEmployeeCount: number
+): Promise<string> {
+  const { invitePda } = getInvitePDA(inviteCode);
+
+  // Derive employee PDA using current employee count
+  const { employeePda } = getEmployeePDA(batchPda, batchEmployeeCount);
+
+  const signature = await program.methods
+    .acceptInviteStreaming(stealthMetaAddress)
+    .accounts({
+      payer,
+      employeeStealthPubkey,
+      invite: invitePda,
+      masterVault: masterVaultPda,
+      batch: batchPda,
+      employee: employeePda,
       systemProgram: SystemProgram.programId,
     })
     .rpc();
@@ -1023,6 +1212,7 @@ function parseInviteAccount(account: any): InviteData {
   };
 
   const statusKey = Object.keys(account.status)[0];
+  const salaryRate = account.salaryRate?.toNumber?.() ?? 0;
 
   return {
     batch: account.batch,
@@ -1030,10 +1220,13 @@ function parseInviteAccount(account: any): InviteData {
     creator: account.creator,
     recipient: account.recipient,
     recipientStealthAddress: account.recipientStealthAddress,
+    salaryRate,
     status: statusMap[statusKey] || 'Pending',
     createdAt: account.createdAt.toNumber(),
     acceptedAt: account.acceptedAt.toNumber(),
     bump: account.bump,
+    // Computed: monthly salary in SOL
+    monthlySalary: salaryRate > 0 ? (salaryRate * 30 * 24 * 60 * 60) / LAMPORTS_PER_SOL : 0,
   };
 }
 
@@ -1073,6 +1266,191 @@ function parseStealthRegistryAccount(account: any): StealthRegistryData {
     ephemeralPubKey: account.ephemeralPubKey,
     amount: account.amount.toNumber() / LAMPORTS_PER_SOL,
     timestamp: account.timestamp.toNumber(),
+    bump: account.bump,
+  };
+}
+
+// ============================================
+// ANONYMOUS RECEIPTS OPERATIONS
+// ============================================
+
+/**
+ * Generate a random 32-byte secret for receipt creation
+ */
+export function generateReceiptSecret(): Uint8Array {
+  const secret = new Uint8Array(32);
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(secret);
+  } else {
+    // Node.js fallback
+    for (let i = 0; i < 32; i++) {
+      secret[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return secret;
+}
+
+/**
+ * Create an anonymous receipt after claiming salary
+ * Returns the secret that must be stored locally for later verification
+ */
+export async function createReceipt(
+  program: Program,
+  employeeSigner: PublicKey,
+  employeePda: PublicKey,
+  batchPda: PublicKey,
+  totalClaimed: number,
+  secret?: Uint8Array
+): Promise<{ signature: string; secret: Uint8Array }> {
+  const receiptSecret = secret || generateReceiptSecret();
+  const { receiptPda } = getReceiptPDA(employeeSigner, batchPda, totalClaimed);
+
+  const signature = await program.methods
+    .createReceipt(Array.from(receiptSecret))
+    .accounts({
+      employeeSigner,
+      employee: employeePda,
+      batch: batchPda,
+      receipt: receiptPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return { signature, secret: receiptSecret };
+}
+
+/**
+ * Verify an anonymous receipt with full proof (reveals amount)
+ * Used for complete audits
+ */
+export async function verifyReceipt(
+  program: Program,
+  verifier: PublicKey,
+  receiptPda: PublicKey,
+  proof: ReceiptProof
+): Promise<string> {
+  const signature = await program.methods
+    .verifyReceipt(
+      proof.employeeWallet,
+      proof.batchKey,
+      new BN(proof.timestamp),
+      new BN(proof.amount * LAMPORTS_PER_SOL),
+      Array.from(proof.secret)
+    )
+    .accounts({
+      verifier,
+      receipt: receiptPda,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Verify an anonymous receipt without revealing amount (blind verification)
+ * Proves: "This employee received payment from this employer"
+ * Does NOT prove: the specific amount
+ */
+export async function verifyReceiptBlind(
+  program: Program,
+  verifier: PublicKey,
+  receiptPda: PublicKey,
+  employeeWallet: PublicKey,
+  timestampRangeStart: number,
+  timestampRangeEnd: number
+): Promise<string> {
+  const signature = await program.methods
+    .verifyReceiptBlind(
+      employeeWallet,
+      new BN(timestampRangeStart),
+      new BN(timestampRangeEnd)
+    )
+    .accounts({
+      verifier,
+      receipt: receiptPda,
+    })
+    .rpc();
+
+  return signature;
+}
+
+/**
+ * Fetch a payment receipt by PDA
+ */
+export async function fetchReceipt(
+  program: Program,
+  receiptPda: PublicKey
+): Promise<PaymentReceiptData | null> {
+  try {
+    const account = await (program.account as any).paymentReceipt.fetch(receiptPda);
+    return parseReceiptAccount(account);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * List all receipts for an employee
+ */
+export async function listEmployeeReceipts(
+  program: Program,
+  employeeWallet: PublicKey
+): Promise<{ pubkey: PublicKey; account: PaymentReceiptData }[]> {
+  try {
+    const accounts = await (program.account as any).paymentReceipt.all([
+      {
+        memcmp: {
+          offset: 8, // After discriminator
+          bytes: employeeWallet.toBase58(),
+        },
+      },
+    ]);
+
+    return accounts.map(({ publicKey, account }: any) => ({
+      pubkey: publicKey,
+      account: parseReceiptAccount(account),
+    }));
+  } catch (e) {
+    console.error('Failed to list receipts:', e);
+    return [];
+  }
+}
+
+/**
+ * List all receipts from a specific employer
+ */
+export async function listReceiptsByEmployer(
+  program: Program,
+  employerWallet: PublicKey
+): Promise<{ pubkey: PublicKey; account: PaymentReceiptData }[]> {
+  try {
+    const accounts = await (program.account as any).paymentReceipt.all([
+      {
+        memcmp: {
+          offset: 8 + 32 + 32, // employee + batch
+          bytes: employerWallet.toBase58(),
+        },
+      },
+    ]);
+
+    return accounts.map(({ publicKey, account }: any) => ({
+      pubkey: publicKey,
+      account: parseReceiptAccount(account),
+    }));
+  } catch (e) {
+    console.error('Failed to list receipts by employer:', e);
+    return [];
+  }
+}
+
+function parseReceiptAccount(account: any): PaymentReceiptData {
+  return {
+    employee: account.employee,
+    batch: account.batch,
+    employer: account.employer,
+    commitment: new Uint8Array(account.commitment),
+    timestamp: account.timestamp.toNumber(),
+    receiptIndex: account.receiptIndex.toNumber(),
     bump: account.bump,
   };
 }

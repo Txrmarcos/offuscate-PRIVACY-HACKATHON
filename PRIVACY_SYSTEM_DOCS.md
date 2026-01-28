@@ -1,6 +1,6 @@
-# Offuscate - Complete Privacy Platform Documentation
+# Offuscate - Complete Privacy Payroll Documentation
 
-> **Private Donations & Wallet Mixing on Solana**
+> **Privacy-First B2B Payroll Platform on Solana**
 > Built for Solana Privacy Hackathon 2025
 
 ---
@@ -8,12 +8,10 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Platform Products](#platform-products)
-   - [Private Donations](#1-private-donations)
-   - [ShadowMix (Personal Mixer)](#2-shadowmix-personal-mixer)
+2. [Platform Architecture](#platform-architecture)
 3. [Privacy Technology Stack](#privacy-technology-stack)
-4. [User Interface & Pages](#user-interface--pages)
-5. [Technical Architecture](#technical-architecture)
+4. [User Flows](#user-flows)
+5. [Pages & Navigation](#pages--navigation)
 6. [Smart Contract Reference](#smart-contract-reference)
 7. [API Reference](#api-reference)
 8. [Security & Privacy Guarantees](#security--privacy-guarantees)
@@ -23,23 +21,18 @@
 
 ## Overview
 
-**Offuscate** is a privacy-first platform on Solana with two distinct products:
-
-| Product | Purpose | Privacy Method |
-|---------|---------|----------------|
-| **Private Donations** | Donate to campaigns privately | Light Protocol ZK Compression |
-| **ShadowMix** | Personal wallet mixing | Commitment-based Privacy Pool |
+**Offuscate** is a privacy-first B2B payroll platform that enables companies to pay employees without exposing salary information on-chain.
 
 ### The Problem
 
-Standard blockchain transactions are fully transparent:
+Standard blockchain payroll is fully transparent:
 ```
-wallet_A ─────► wallet_B ─────► wallet_C
-    │              │              │
-    └──────────────┴──────────────┴──── All visible on explorer
+company_wallet ─────► employee_wallet_A ─────► 1000 SOL
+       │              employee_wallet_B ─────► 2000 SOL
+       └──────────────────────────────────────── All salaries visible!
 ```
 
-Anyone can trace funds, identify donors, and link wallets.
+Anyone can see who pays whom, how much, and when.
 
 ### Our Solution
 
@@ -47,156 +40,103 @@ Anyone can trace funds, identify donors, and link wallets.
 ┌─────────────────────────────────────────────────────────────┐
 │                    OFFUSCATE PRIVACY STACK                   │
 ├─────────────────────────────────────────────────────────────┤
-│  LAYER 4: Light Protocol ZK Compression                     │
-│  └── Groth16 ZK proofs, sender-receiver link broken         │
+│  MAXIMUM PRIVACY: ZK + Stealth + Offuscate Wallet           │
+│  └── Sender hidden, Recipient hidden, Amount hidden         │
 ├─────────────────────────────────────────────────────────────┤
-│  LAYER 3: Commitment + Nullifier System                     │
-│  └── Cryptographic unlinkability for deposits/withdrawals   │
+│  LAYER 3: ZK Compression (Light Protocol)                   │
+│  └── Hides sender address and transaction amount            │
 ├─────────────────────────────────────────────────────────────┤
-│  LAYER 2: Gas Abstraction (Relayer)                         │
-│  └── Stealth address never appears as fee payer             │
+│  LAYER 2: Stealth Addresses                                 │
+│  └── One-time addresses via ECDH key exchange               │
 ├─────────────────────────────────────────────────────────────┤
-│  LAYER 1: Privacy Pool                                      │
-│  └── Variable delay + Standardized amounts + Pool mixing    │
+│  LAYER 1: Offuscate Wallet / Salary Wallet                  │
+│  └── Deterministic keypair, not linked to main wallet       │
 ├─────────────────────────────────────────────────────────────┤
-│  LAYER 0: Stealth Addresses                                 │
-│  └── One-time addresses derived via ECDH                    │
+│  LAYER 0: Privacy Pool                                      │
+│  └── Fund mixing with variable delays                       │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Stealth Addresses** | One-time addresses for each payment, unlinkable to employee's main wallet |
+| **Easy Stealth Address Sharing** | One-click copy of your stealth meta address on Dashboard and Salary pages |
+| **ZK Compression** | Hide sender and amount using Light Protocol zero-knowledge proofs |
+| **Offuscate Wallet / Salary Wallet** | Derived privacy wallet for transactions |
+| **Streaming Payroll** | Real-time salary accrual per second |
+| **Invite System** | Onboard employees without exposing their wallet addresses |
+| **Auto-Scan Stealth Payments** | Automatic detection of incoming stealth payments on Salary page |
+| **Privacy Pool** | Mix funds for additional unlinkability |
+| **Role Persistence** | Remember employer/recipient role per wallet in localStorage |
 
 ### Deployed Addresses (Devnet)
 
 | Component | Address |
 |-----------|---------|
 | Program ID | `5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq` |
-| Relayer | `BEfcVt7sUkRC4HVmWn2FHLkKPKMu1uhkXb4dDr5g7A1a` |
-| Privacy Pool PDA | `seeds = ["privacy_pool"]` |
-| Pool Vault PDA | `seeds = ["pool_vault"]` |
 
 ---
 
-## Platform Products
+## Platform Architecture
 
-### 1. Private Donations
+### Role-Based System
 
-**Purpose:** Donate to crowdfunding campaigns with privacy protection.
+The platform has two user roles:
 
-**Location:** `/explore` → Campaign → Donate
+| Role | Detection | Features |
+|------|-----------|----------|
+| **Employer** | Owns at least one payroll batch | Create batches, generate invites, fund payroll, send payments |
+| **Recipient** | Has accepted at least one invite | View salary, claim payments, access receipts |
 
-#### Privacy Options for Donations
+Role detection is persisted per wallet in localStorage for instant recognition on reconnect.
 
-| Level | Name | Description | Privacy Score |
-|-------|------|-------------|---------------|
-| `ZK_COMPRESSED` | **ZK Private** (Recommended) | Batch processing via Privacy Pool. Donations batched together. | 100% |
-| `PRIVATE` | **ShadowWire** | Bulletproofs ZK. Amount AND sender hidden. | 100% |
-| `PUBLIC` | **Public** | Standard transfer. Fully visible on explorer. | 0% |
-
-#### How ZK Private Donations Work (Batch System)
-
-The batch donation system provides **maximum privacy** by:
-1. Breaking the **address link** (donor deposits to privacy pool)
-2. Breaking the **timing link** (donations processed in batches)
-3. Breaking the **amount link** (standardized amounts: 0.1, 0.5, 1.0 SOL)
+### System Overview
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                        BATCH DONATION FLOW                                │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  STEP 1: DEPOSIT TO PRIVACY POOL                                         │
-│  ────────────────────────────────                                        │
-│  Donor Wallet ────────────────► Privacy Pool                             │
-│       │                              │                                   │
-│       │  commitment = hash(secret +  │                                   │
-│       │               nullifier +    │                                   │
-│       │               amount)        │                                   │
-│       │                              │                                   │
-│       └─ This tx is visible but NOT linked to campaign                   │
-│                                                                          │
-│  STEP 2: QUEUE WITH RELAYER                                              │
-│  ──────────────────────────────                                          │
-│  Donation intent stored locally. Relayer queues for batch processing.   │
-│                                                                          │
-│       Queue: [Don_1, Don_2, Don_3, ...]                                  │
-│                     │                                                    │
-│                     ▼                                                    │
-│       Batched when: 2+ donations OR 5 minutes elapsed                    │
-│                                                                          │
-│  STEP 3: BATCH PROCESSING (by Relayer)                                   │
-│  ──────────────────────────────────────                                  │
-│  Relayer withdraws from pool → sends to campaign vaults                  │
-│                                                                          │
-│       Privacy Pool ────┬──────────────► Campaign A Vault                 │
-│            │           │                                                 │
-│            │           └──────────────► Campaign B Vault                 │
-│            │                                                             │
-│            └─ Relayer pays gas. Donors never appear in this tx!          │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-
-RESULT:
-  - On-chain: Donor → Pool (no campaign link)
-  - On-chain: Pool → Campaign (relayer-signed, no donor link)
-  - Timeline: Deposit and withdrawal at different times (breaks timing)
-  - Amounts: Standardized (breaks amount correlation)
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND (Next.js)                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐ │
+│  │   Wallet    │  │   Stealth   │  │   Payroll   │  │    Treasury     │ │
+│  │  Adapter    │  │   Context   │  │   Manager   │  │    Dashboard    │ │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └────────┬────────┘ │
+│         └────────────────┴────────────────┴───────────────────┘          │
+│                                   │                                       │
+│                          ┌────────┴────────┐                              │
+│                          │  useProgram()   │                              │
+│                          └────────┬────────┘                              │
+└───────────────────────────────────┼───────────────────────────────────────┘
+                                    │
+                    ┌───────────────┼───────────────┐
+                    │               │               │
+                    ▼               ▼               ▼
+            ┌───────────┐   ┌───────────┐   ┌───────────┐
+            │  Solana   │   │  Relayer  │   │   Light   │
+            │  Devnet   │   │    API    │   │  Protocol │
+            └───────────┘   └───────────┘   └───────────┘
 ```
 
-#### Key Features
-
-- **Campaign Discovery:** Browse all active campaigns at `/explore`
-- **Privacy Selection:** Choose privacy level before donating
-- **Visual Feedback:** PrivacyGraphAnimation shows transaction flow
-- **Trace Simulator:** Test if your transaction can be traced
-
----
-
-### 2. ShadowMix (Personal Mixer)
-
-**Purpose:** Private transfers between wallets. Break the on-chain link between your wallets.
-
-**Location:** `/mixer`
-
-#### Two Wallet System
-
-| Wallet | Description | Use Case |
-|--------|-------------|----------|
-| **Main Wallet** | Connected wallet (Phantom, etc.) | Public transactions, receiving |
-| **Stealth Wallet** | Derived deterministically from main | Private operations, untraceable |
-
-#### ShadowMix Features
-
-**Mix Tab:**
-- Deposit SOL into privacy pool (standardized amounts: 0.1, 0.5, 1.0 SOL)
-- Withdraw to stealth wallet after variable delay
-- Pool stats display (balance, total mixed, transactions)
-
-**Send Tab:**
-- Send payments from either wallet
-- Choose privacy mode: ZK Private or Direct
-- Maximum privacy: Stealth wallet + ZK mode
-
-#### Commitment-Based Privacy
-
-Each deposit creates a cryptographic commitment that binds the amount:
+### Data Model
 
 ```
-commitment = hash(secret + nullifier + amount)
+MasterVault (singleton)
+    │
+    ├── PayrollBatch #0
+    │       ├── Employee #0 (wallet: stealth_pubkey_A)
+    │       ├── Employee #1 (wallet: stealth_pubkey_B)
+    │       └── BatchVault (holds SOL for streaming)
+    │
+    ├── PayrollBatch #1
+    │       ├── Employee #0
+    │       └── BatchVault
+    │
+    └── PayrollBatch #N...
+
+Invites:
+    ├── Invite "ABC123" → links to batch, has salary rate
+    └── Invite "XYZ789" → links to batch, has salary rate
 ```
-
-**Why nobody can steal your funds:**
-
-| Step | What Happens | Security |
-|------|--------------|----------|
-| Deposit | commitment = hash(secret + amount) | Amount cryptographically bound |
-| Pool | All deposits mixed together | Funds indistinguishable |
-| Withdraw | Prove secret → get exact amount | Cannot withdraw more than deposited |
-
-**Standardized amounts** (0.1, 0.5, 1.0 SOL) increase the anonymity set - more deposits at the same amount = harder to trace.
-
-#### Quick Transfers
-
-- **Main → Stealth:** Move funds to your private wallet
-- **Stealth → Main:** Consolidate back (reduces privacy)
 
 ---
 
@@ -204,16 +144,18 @@ commitment = hash(secret + nullifier + amount)
 
 ### Layer 0: Stealth Addresses
 
-One-time addresses generated for each transaction using ECDH (Elliptic Curve Diffie-Hellman).
+One-time addresses generated using ECDH (Elliptic Curve Diffie-Hellman).
 
+**Traditional (traceable):**
 ```
-TRADITIONAL (traceable):
-  sender_wallet → recipient_main_wallet ← Link visible
+employer_wallet → employee_main_wallet ← Link visible
+```
 
-STEALTH (unlinkable):
-  sender_wallet → stealth_address_1
-  sender_wallet → stealth_address_2  ← Different address each time!
-  sender_wallet → stealth_address_3
+**Stealth (unlinkable):**
+```
+employer_wallet → stealth_address_1
+employer_wallet → stealth_address_2  ← Different address each time!
+employer_wallet → stealth_address_3
 ```
 
 **Key Generation:**
@@ -227,231 +169,245 @@ interface StealthKeys {
 const metaAddress = `st:${bs58.encode(viewPublicKey)}:${bs58.encode(spendPublicKey)}`;
 ```
 
+**Flow:**
+1. Employee publishes stealth meta-address: `st:<viewPubKey>:<spendPubKey>`
+2. Employer generates ephemeral keypair for each payment
+3. Employer computes shared secret: `S = ephemeralPrivate * viewPublic`
+4. Employer derives stealth address from shared secret + spendPubKey
+5. Employee scans using viewKey, derives spending key to claim
+
+**Easy Sharing:**
+Both Dashboard and Salary pages display a prominent "Your Stealth Address" card with one-click copy functionality.
+
 **Implementation:** `frontend/app/lib/stealth/`
 
 ---
 
-### Layer 1: Privacy Pool
+### Layer 1: Offuscate Wallet / Salary Wallet
 
-The Privacy Pool breaks the direct link between deposits and withdrawals.
+A deterministic keypair derived from the main wallet:
+
+```typescript
+// Derive Offuscate wallet from main wallet seed
+const seed = sha256(mainWallet.publicKey + "privacy_pool_stealth_v1");
+const offuscateKeypair = Keypair.fromSeed(seed.slice(0, 32));
+```
+
+**Properties:**
+- Not linked to main wallet on-chain
+- Same seed always produces same keypair
+- Used for sending private payments
+- Employer can use to hide their identity as sender
+
+---
+
+### Layer 2: ZK Compression (Light Protocol)
+
+Zero-knowledge compression hides sender and amount:
+
+```
+WITHOUT ZK:
+  employer_wallet ──► employee_stealth ── Amount: 1000 SOL (visible!)
+
+WITH ZK:
+  [compressed_account] ──► employee_stealth ── Amount: ??? (hidden!)
+```
+
+**How it works:**
+- Funds are compressed into Merkle tree state
+- Transfers use Groth16 ZK proofs
+- Sender address not visible on-chain
+- Amount encrypted in compressed state
+
+**SDK:**
+```typescript
+import { Rpc, createRpc } from "@lightprotocol/stateless.js";
+import { compress, transfer } from "@lightprotocol/compressed-token";
+
+// ZK compressed transfer
+await transfer(rpc, payer, amount, owner, toAddress);
+```
+
+---
+
+### Layer 3: Privacy Pool
+
+Commitment-based mixing for additional unlinkability:
 
 ```
 WITHOUT POOL:
-  donor_A ──────────────────────► recipient_X  ← DIRECT LINK
+  employer_A ──────────────────────► recipient_X  ← DIRECT LINK
 
 WITH POOL:
-  donor_A ───┐                          ┌──► recipient_X
-  donor_B ───┼──► [ PRIVACY POOL ] ─────┼──► recipient_Y
-  donor_C ───┘     (mixed funds)        └──► recipient_Z
-                       ↑
-                  LINK BROKEN
+  employer_A ───┐                          ┌──► recipient_X
+  employer_B ───┼──► [ PRIVACY POOL ] ─────┼──► recipient_Y
+  employer_C ───┘     (mixed funds)        └──► recipient_Z
+                           ↑
+                      LINK BROKEN
 ```
 
-**Anti-Correlation Features:**
+**Commitment System:**
+```
+deposit:
+  commitment = SHA256(secret || nullifier || amount)
 
-| Feature | Purpose |
-|---------|---------|
-| Variable Delay (30s - 5min) | Prevents timing correlation |
-| Standardized Amounts | Prevents value correlation |
-| Pool Churn | Internal mixing for graph resistance |
-| Batch Withdrawals | Multiple recipients in single tx |
+withdraw:
+  prove: I know (secret, nullifier) that produces commitment
+  check: nullifier not used before (NullifierPDA)
+```
 
 ---
 
-### Layer 2: Gas Abstraction (Relayer)
+### Combined Privacy Options
 
-The relayer solves fee payer exposure:
-
-```
-WITHOUT RELAYER:
-  stealth_address (SIGNER) ──► claim_tx ──► receives funds
-          │                         │
-          └── FEE PAYER ────────────┘  ← EXPOSED!
-
-WITH RELAYER:
-  stealth_address ──┐
-         │          │  Signs message off-chain
-         │          ▼
-         │     ┌─────────┐
-         │     │ Relayer │ ← Builds tx, PAYS GAS
-         │     └────┬────┘
-         │          │
-         └────► receives funds (NO ON-CHAIN SIGNING)
-```
-
-**Relayer API:** `POST /api/relayer/claim`
+| Option | Sender | Recipient | Amount | How |
+|--------|--------|-----------|--------|-----|
+| Standard | Visible | Visible | Visible | Direct transfer |
+| Offuscate Wallet | Hidden | Visible | Visible | Use derived keypair |
+| Stealth Address | Visible | Hidden | Visible | One-time ECDH address |
+| ZK Compression | Hidden | Visible | Hidden | Light Protocol |
+| **ZK + Stealth** | **Hidden** | **Hidden** | **Hidden** | Maximum privacy |
 
 ---
 
-### Layer 3: Commitment + Nullifier System
+## User Flows
 
-Inspired by Tornado Cash, provides cryptographic unlinkability.
+### Employer Flow
 
-**Deposit:**
 ```
-secret = random(32 bytes)
-nullifier_secret = random(32 bytes)
-commitment = SHA256(SHA256(secret) || SHA256(nullifier_secret) || amount)
+1. SETUP
+   ├── Connect wallet
+   ├── System detects employer role (or first time)
+   └── Navigate to Treasury
+
+2. CREATE PAYROLL
+   ├── Go to Payroll page
+   ├── Create new batch (e.g., "Engineering Team")
+   └── Batch created with index-based PDA
+
+3. ONBOARD EMPLOYEES
+   ├── Generate invite code with salary config
+   │   └── createInvite(batchId, 1000) // 1000 SOL/month
+   ├── Share invite code with employee (off-chain)
+   └── Employee accepts → stealth pubkey registered
+
+4. FUND PAYROLL
+   ├── Go to batch → Fund Batch
+   ├── Enter amount in SOL
+   └── SOL transferred to batch vault
+
+5. SALARY STREAMING
+   └── Salary accrues per second automatically
+       accruedSalary = salaryRate * (now - lastClaimedAt)
+
+6. SEND PAYMENTS (Treasury)
+   ├── Select wallet: Main or Offuscate
+   ├── Select recipient type: Public or Stealth
+   ├── Enable ZK for amount privacy
+   └── Send with maximum privacy combination
 ```
 
-**On-chain:** Only the commitment hash is stored (reveals nothing)
+### Employee Flow
 
-**Withdrawal:**
 ```
-1. Provide: nullifier, secret_hash, amount
-2. On-chain recomputes: SHA256(secret_hash || nullifier || amount)
-3. Verify: computed == stored_commitment
-4. Check: NullifierPDA doesn't exist (no double-spend)
-5. Create NullifierPDA, transfer funds
+1. RECEIVE INVITE
+   └── Get invite code from employer (email, Slack, etc.)
+
+2. ACCEPT INVITE
+   ├── Go to /invite/[code] or /salary page
+   ├── Enter invite code
+   ├── System generates stealth keypair locally
+   ├── Accept invite → registers stealth pubkey on-chain
+   └── Store stealth private key in localStorage
+
+3. VIEW SALARY
+   ├── Salary accrues in real-time
+   ├── View: Monthly rate, accrued amount, total claimed
+   └── Status: Active/Paused/Terminated
+
+4. CLAIM SALARY
+   ├── Click "Claim" when ready
+   ├── Signs with stealth keypair (not main wallet!)
+   └── SOL transferred to stealth address
+
+5. USE FUNDS
+   ├── Transfer from stealth to main wallet (reduces privacy)
+   └── Or use directly from stealth address
 ```
 
-**Why it's unlinkable:** Without `secret` and `nullifier_secret`, cannot prove which deposit matches which withdrawal.
+### Receiving Stealth Payments Flow
+
+```
+1. SHARE STEALTH ADDRESS
+   ├── Go to Dashboard or Salary page
+   ├── Find "Your Stealth Address" card
+   ├── Click copy button to copy meta address
+   └── Share with sender (format: st:viewPubKey:spendPubKey)
+
+2. AUTO-SCAN
+   ├── Salary page auto-scans on load
+   ├── Scans Memo Program for stealth:ephemeralKey transactions
+   ├── Derives stealth addresses using your viewKey
+   └── Lists found payments with balances
+
+3. CLAIM PAYMENT
+   ├── Select destination: Salary Wallet or Main Wallet
+   └── Click claim to transfer funds
+```
 
 ---
 
-### Layer 4: Light Protocol ZK Compression
+## Pages & Navigation
 
-The most powerful privacy layer using Groth16 zero-knowledge proofs.
+### Employer Navigation
 
-**Technology:**
-- Compressed SOL stored in Merkle trees
-- Groth16 ZK proofs verify transfers
-- 99% on-chain data reduction
-- Complete sender unlinkability
+| Page | Route | Description |
+|------|-------|-------------|
+| **Treasury** | `/mixer` | Dashboard with wallet balances, circular chart, send payments |
+| **Payroll** | `/payroll` | Manage batches, employees, invites, fund payroll |
+| **Activity** | `/dashboard` | Payment history, stealth address card |
+| **Pool** | `/pool` | Privacy pool for additional mixing |
 
-**SDK:**
-```json
-{
-  "@lightprotocol/stateless.js": "^0.22.0",
-  "@lightprotocol/compressed-token": "^0.22.0"
-}
-```
+### Recipient Navigation
 
-**On-Chain Programs (Devnet):**
+| Page | Route | Description |
+|------|-------|-------------|
+| **Salary** | `/salary` | View accrued salary, stealth address card, auto-scan scanner, receipts |
+| **Activity** | `/dashboard` | Payment history, stealth address card |
+| **Pool** | `/pool` | Privacy pool access |
 
-| Program | Address |
-|---------|---------|
-| Light System Program | `SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7` |
-| Account Compression | `compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq` |
-| State Merkle Tree | `smt3AFtReRGVcrP11D6bSLEaKdUmrGfaTNowMVccJeu` |
+### Page Components
 
-**Implementation:** `frontend/app/lib/privacy/lightProtocol.ts`
+**Treasury (`/mixer`):**
+- Wallet balances (Main + Offuscate)
+- Circular balance chart (filterable by wallet)
+- Send Payment form:
+  - Wallet selection (Main/Offuscate)
+  - Recipient type (Public/Stealth)
+  - ZK toggle for amount privacy
+  - Privacy summary showing what's hidden
 
----
+**Payroll (`/payroll`):**
+- Batch list with stats
+- Create batch form
+- Invite manager (create, copy, revoke)
+- Employee list per batch
+- Fund batch form with error handling
 
-## User Interface & Pages
+**Dashboard (`/dashboard`):**
+- **Your Stealth Address card** with one-click copy
+- Payment History with filters (All/Received/Sent/Private/Standard)
+- Stats: Total distributed, private volume, operations, RPC status
+- Streaming Salary Card (for recipients)
 
-### Navigation
-
-| Route | Page | Description |
-|-------|------|-------------|
-| `/` | Home | Landing page with platform overview |
-| `/explore` | Campaigns | Browse and donate to campaigns |
-| `/mixer` | ShadowMix | Personal wallet mixer |
-| `/launch` | Launch | Create new campaign |
-| `/dashboard` | Dashboard | Manage your campaigns and stealth keys |
-| `/activity` | Activity | Transaction history |
-
-### Components
-
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| `DonationModal` | `/components/DonationModal.tsx` | Privacy-level donation selection |
-| `SendPaymentModal` | `/components/SendPaymentModal.tsx` | P2P transfers with privacy |
-| `PrivacyFeedback` | `/components/PrivacyFeedback.tsx` | Post-transaction privacy analysis |
-| `TraceSimulator` | `/components/TraceSimulator.tsx` | Interactive traceability test |
-| `PrivacyGraphAnimation` | `/components/PrivacyGraphAnimation.tsx` | Visual transaction flow |
-| `WaveMeshBackground` | `/components/WaveMeshBackground.tsx` | Animated background |
-
-### Design System
-
-**Color Palette:** Monochrome (white/black/gray)
-- Background: `#0a0a0a`
-- Cards: `bg-white/[0.02]` to `bg-white/[0.05]`
-- Borders: `border-white/[0.06]` to `border-white/[0.15]`
-- Text: `text-white`, `text-white/60`, `text-white/40`, `text-white/20`
-- Accent: White buttons on dark background
-
----
-
-## Technical Architecture
-
-### System Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              FRONTEND (Next.js)                          │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐ │
-│  │   Wallet    │  │   Stealth   │  │  ShadowMix  │  │    Campaign     │ │
-│  │  Adapter    │  │   Context   │  │    Mixer    │  │    Manager      │ │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └────────┬────────┘ │
-│         └────────────────┴────────────────┴───────────────────┘          │
-│                                   │                                       │
-│                          ┌────────┴────────┐                              │
-│                          │  Program Client │                              │
-│                          └────────┬────────┘                              │
-└───────────────────────────────────┼───────────────────────────────────────┘
-                                    │
-                    ┌───────────────┼───────────────┐
-                    │               │               │
-                    ▼               ▼               ▼
-            ┌───────────┐   ┌───────────┐   ┌───────────┐
-            │  Solana   │   │  Relayer  │   │   Light   │
-            │  Devnet   │   │    API    │   │  Protocol │
-            └───────────┘   └───────────┘   └───────────┘
-```
-
-### File Structure
-
-```
-frontend/
-├── app/
-│   ├── page.tsx              # Home
-│   ├── explore/page.tsx      # Campaigns browser
-│   ├── mixer/page.tsx        # ShadowMix mixer
-│   ├── launch/page.tsx       # Create campaign
-│   ├── dashboard/page.tsx    # User dashboard
-│   ├── activity/page.tsx     # Transaction history
-│   ├── components/
-│   │   ├── Header.tsx
-│   │   ├── DonationModal.tsx
-│   │   ├── SendPaymentModal.tsx
-│   │   ├── PrivacyFeedback.tsx
-│   │   ├── TraceSimulator.tsx
-│   │   ├── PrivacyGraphAnimation.tsx
-│   │   └── WaveMeshBackground.tsx
-│   ├── lib/
-│   │   ├── program/          # Anchor client
-│   │   ├── privacy/          # Privacy utilities
-│   │   │   ├── index.ts      # Commitment system
-│   │   │   └── lightProtocol.ts  # ZK Compression
-│   │   └── stealth/          # Stealth addresses
-│   │       ├── index.ts
-│   │       └── StealthContext.tsx
-│   └── api/
-│       ├── relayer/
-│       │   ├── claim/route.ts
-│       │   └── private-claim/route.ts
-│       ├── light/
-│       │   ├── balance/route.ts
-│       │   └── health/route.ts
-│       └── privacy/
-│           ├── deposit/route.ts
-│           └── withdraw/route.ts
-└── public/
-```
-
-### Key Libraries
-
-| Library | Version | Purpose |
-|---------|---------|---------|
-| `@solana/web3.js` | ^1.98 | Solana SDK |
-| `@coral-xyz/anchor` | ^0.30 | Program client |
-| `@lightprotocol/stateless.js` | ^0.22 | ZK Compression |
-| `@solana/wallet-adapter-react` | ^0.15 | Wallet connection |
-| `next` | ^15 | React framework |
-| `lucide-react` | ^0.468 | Icons |
-| `tailwindcss` | ^4 | Styling |
+**Salary (`/salary`):**
+- **Your Stealth Address card** with one-click copy
+- Wallet balances (Main + Salary Wallet)
+- Salary streaming card with claim button
+- **StealthPaymentScanner** - Auto-scans for incoming payments
+  - Wallet destination selector (Salary/Main)
+  - Claim functionality
+- Anonymous Receipts card
 
 ---
 
@@ -462,238 +418,215 @@ frontend/
 5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
 ```
 
-### Instructions
+### Key Instructions
 
-#### Campaign Management
-
+#### Master Vault
 | Instruction | Description |
 |-------------|-------------|
-| `create_campaign` | Create new campaign with vault |
-| `donate` | Public donation to campaign |
-| `close_campaign` | Close campaign (owner only) |
-| `withdraw_funds` | Withdraw funds to owner |
+| `init_master_vault` | Initialize singleton master vault |
+
+#### Payroll Batches
+| Instruction | Description |
+|-------------|-------------|
+| `create_batch` | Create new payroll batch |
+| `fund_batch` | Add funds to batch vault |
+
+#### Employees
+| Instruction | Description |
+|-------------|-------------|
+| `add_employee` | Add employee directly (requires wallet) |
+| `claim_salary` | Employee claims accrued salary |
+| `update_salary_rate` | Owner updates employee salary |
+
+#### Invites
+| Instruction | Description |
+|-------------|-------------|
+| `create_invite` | Create invite with salary config |
+| `accept_invite` | Accept invite (simple) |
+| `accept_invite_streaming` | Accept invite + add to streaming payroll |
+| `revoke_invite` | Revoke pending invite |
 
 #### Privacy Pool
-
 | Instruction | Description |
 |-------------|-------------|
 | `init_privacy_pool` | Initialize pool (once) |
-| `pool_deposit` | Deposit to pool |
-| `request_withdraw` | Request withdrawal with delay |
-| `claim_withdraw` | Claim after delay |
-| `claim_withdraw_relayed` | Gasless claim via relayer |
-
-#### Commitment Privacy
-
-| Instruction | Description |
-|-------------|-------------|
-| `private_deposit` | Deposit with commitment hash |
-| `private_withdraw` | Withdraw with proof |
-| `private_withdraw_relayed` | Gasless withdraw via relayer |
+| `private_deposit` | Deposit with commitment |
+| `private_withdraw` | Withdraw with nullifier proof |
 
 ### Account Structures
 
 ```rust
 #[account]
-pub struct Campaign {
-    pub owner: Pubkey,
-    pub campaign_id: String,
-    pub title: String,
-    pub description: String,
-    pub goal: u64,
-    pub total_raised: u64,
-    pub donor_count: u32,
-    pub deadline: i64,
-    pub status: CampaignStatus,
-    pub stealth_meta_address: String,
+pub struct MasterVault {
+    pub authority: Pubkey,      // Who initialized
+    pub batch_count: u32,       // Number of batches
+    pub total_employees: u32,   // Total across all batches
+    pub total_deposited: u64,   // Total SOL deposited
+    pub total_paid: u64,        // Total SOL paid out
+    pub bump: u8,
 }
 
 #[account]
-pub struct PrivacyPool {
-    pub authority: Pubkey,
-    pub total_deposited: u64,
-    pub total_withdrawn: u64,
-    pub deposit_count: u64,
-    pub withdraw_count: u64,
+pub struct PayrollBatch {
+    pub master_vault: Pubkey,   // Reference to master
+    pub owner: Pubkey,          // Company wallet
+    pub index: u32,             // Batch index
+    pub title: String,          // Batch name
+    pub employee_count: u32,    // Employees in batch
+    pub total_budget: u64,      // Total funded
+    pub total_paid: u64,        // Total claimed
+    pub created_at: i64,
+    pub status: BatchStatus,    // Active/Paused/Closed
+    pub vault_bump: u8,
+    pub batch_bump: u8,
 }
 
 #[account]
-pub struct CommitmentPDA {
-    pub commitment: [u8; 32],
-    pub amount: u64,
-    pub timestamp: i64,
-    pub spent: bool,
+pub struct Employee {
+    pub batch: Pubkey,          // Parent batch
+    pub wallet: Pubkey,         // Stealth pubkey (NOT main wallet!)
+    pub index: u32,             // Employee index
+    pub stealth_address: String, // Meta-address for verification
+    pub salary_rate: u64,       // Lamports per second
+    pub start_time: i64,
+    pub last_claimed_at: i64,
+    pub total_claimed: u64,
+    pub status: EmployeeStatus, // Active/Paused/Terminated
+    pub bump: u8,
 }
 
 #[account]
-pub struct NullifierPDA {
-    pub nullifier: [u8; 32],
-    pub used_at: i64,
+pub struct Invite {
+    pub batch: Pubkey,          // Target batch
+    pub invite_code: String,    // 8-char code
+    pub creator: Pubkey,        // Employer wallet
+    pub recipient: Pubkey,      // Filled on accept
+    pub recipient_stealth_address: String,
+    pub salary_rate: u64,       // Lamports per second
+    pub status: InviteStatus,   // Pending/Accepted/Revoked
+    pub created_at: i64,
+    pub accepted_at: i64,
+    pub bump: u8,
 }
 ```
+
+### PDA Seeds
+
+| Account | Seeds |
+|---------|-------|
+| MasterVault | `["master_vault"]` |
+| PayrollBatch | `["batch", master_vault, index.to_le_bytes()]` |
+| BatchVault | `["batch_vault", batch]` |
+| Employee | `["employee", batch, index.to_le_bytes()]` |
+| Invite | `["invite", invite_code]` |
 
 ---
 
 ## API Reference
 
-### Relayer Endpoints
+### useProgram() Hook
 
-#### `GET /api/relayer/claim`
-Check relayer status.
+Main hook for all program operations:
 
-```json
-{
-  "configured": true,
-  "relayerAddress": "BEfcVt7sUkRC4HVmWn2FHLkKPKMu1uhkXb4dDr5g7A1a",
-  "balance": 2.5
-}
+```typescript
+const {
+  // Payroll
+  initMasterVault,
+  createBatch,
+  fundBatch,
+  fetchBatch,
+  listMyBatches,
+  listBatchEmployees,
+
+  // Employees
+  addEmployee,
+  claimSalary,
+  claimSalaryWithStealth,
+  findMyEmployeeRecord,
+  findEmployeeByStealthPubkey,
+
+  // Invites
+  createInvite,
+  acceptInvite,
+  acceptInviteStreaming,
+  revokeInvite,
+  fetchInvite,
+
+  // Privacy Pool
+  privateDeposit,
+  privateWithdraw,
+  getUnspentPrivateNotes,
+
+  // Receipts
+  createReceipt,
+  createReceiptWithStealth,
+  listMyReceipts,
+  verifyReceiptBlind,
+} = useProgram();
 ```
 
-#### `POST /api/relayer/claim`
-Claim from Privacy Pool via relayer.
+### useStealth() Hook
 
-```json
-// Request
-{
-  "pendingPda": "base58_pending_withdraw_pda",
-  "recipient": "base58_stealth_address",
-  "signature": "base58_ed25519_signature"
-}
+Stealth key management:
 
-// Response
-{
-  "success": true,
-  "signature": "tx_signature"
-}
+```typescript
+const {
+  stealthKeys,           // Current stealth keys
+  metaAddressString,     // Formatted meta address (st:viewPub:spendPub)
+  isInitialized,         // Has stealth keys
+  isLoading,
+  isDeriving,
+  deriveKeysFromWallet,  // Generate keys from wallet signature
+  clearKeys,
+  exportKeys,
+} = useStealth();
 ```
 
-#### `POST /api/relayer/private-claim`
-Claim from commitment system via relayer.
+### useRole() Hook
 
-```json
-// Request
-{
-  "commitment": "hex_commitment_hash",
-  "nullifier": "hex_nullifier_hash",
-  "secretHash": "hex_secret_hash",
-  "amount": 500000000,
-  "recipient": "base58_stealth_address",
-  "signature": "base58_ed25519_signature"
-}
+Role detection with localStorage persistence:
+
+```typescript
+const {
+  role,                  // 'employer' | 'recipient' | null
+  setRole,
+  isLoading,
+  needsOnboarding,
+  pendingInviteCode,
+  setPendingInviteCode,
+  refreshRole,
+} = useRole();
 ```
 
-### Batch Donation Endpoints
+### Employer Operations
 
-#### `POST /api/relayer/queue-donation`
-Queue a private donation for batch processing.
+```typescript
+// Create batch
+const { signature, batchIndex } = await createBatch("Engineering Team");
 
-```json
-// Request
-{
-  "commitment": "hex_commitment_hash",
-  "nullifier": "hex_nullifier_hash",
-  "secretHash": "hex_secret_hash",
-  "amount": 100000000,
-  "campaignId": "my-campaign-id",
-  "campaignVault": "base58_vault_address",
-  "donorSignature": "hex_signature"
-}
+// Create invite with salary (1000 SOL/month)
+const { signature, inviteCode } = await createInvite(campaignId, 1000);
 
-// Response
-{
-  "success": true,
-  "donationId": "don_1234567890_abc123",
-  "queuePosition": 3,
-  "estimatedProcessingTime": 120,
-  "message": "Donation queued. Will be processed in batch for maximum privacy."
-}
+// Fund batch
+await fundBatch(batchIndex, amountLamports);
+
+// List employees
+const employees = await listBatchEmployees(batchIndex);
 ```
 
-#### `GET /api/relayer/queue-donation?id={donationId}`
-Check status of a queued donation.
+### Employee Operations
 
-```json
-// Response
-{
-  "success": true,
-  "donation": {
-    "id": "don_1234567890_abc123",
-    "status": "pending", // pending | processing | completed | failed
-    "campaignId": "my-campaign-id",
-    "amount": 100000000,
-    "timestamp": 1706140800000,
-    "processedAt": null,
-    "txSignature": null,
-    "error": null
-  }
-}
-```
+```typescript
+// Accept invite (generates stealth keypair)
+const stealthKeypair = Keypair.generate();
+await acceptInviteStreaming(inviteCode, stealthMetaAddress, stealthKeypair, batchIndex);
 
-#### `GET /api/relayer/process-batch`
-Get batch queue status.
+// Check salary
+const record = await findMyEmployeeRecord();
+console.log(`Accrued: ${record.employee.accruedSalary / LAMPORTS_PER_SOL} SOL`);
 
-```json
-// Response
-{
-  "success": true,
-  "status": {
-    "pending": 5,
-    "processing": 0,
-    "minBatchSize": 2,
-    "queueAgeSeconds": 180,
-    "maxQueueAgeSeconds": 300,
-    "shouldProcess": true,
-    "lastProcessed": 1706140000000,
-    "totalProcessed": 42,
-    "totalFailed": 1
-  }
-}
-```
-
-#### `POST /api/relayer/process-batch`
-Trigger batch processing (admin/cron job).
-
-```json
-// Response
-{
-  "success": true,
-  "message": "Processed 5 donations",
-  "processed": 4,
-  "failed": 1,
-  "results": [
-    { "id": "don_1", "success": true, "signature": "tx_sig_1" },
-    { "id": "don_2", "success": true, "signature": "tx_sig_2" }
-  ]
-}
-```
-
-### Light Protocol Endpoints
-
-#### `GET /api/light/health`
-Check Light Protocol availability.
-
-```json
-{
-  "success": true,
-  "available": true,
-  "protocol": "Light Protocol ZK Compression",
-  "features": {
-    "compressedSOL": true,
-    "zkProofs": "Groth16",
-    "merkleTreeStorage": true
-  }
-}
-```
-
-#### `POST /api/light/balance`
-Get compressed SOL balance.
-
-```json
-// Request
-{ "publicKey": "base58_address" }
-
-// Response
-{ "balance": 1.5 }
+// Claim with stealth keypair
+await claimSalaryWithStealth(batchIndex, employeeIndex, stealthKeypair);
 ```
 
 ---
@@ -704,32 +637,36 @@ Get compressed SOL balance.
 
 | Threat | Attack Vector | Mitigation |
 |--------|---------------|------------|
-| Timing Correlation | Match deposit/withdraw times | Variable delay (30s-5min) |
-| Amount Correlation | Match deposit/withdraw amounts | Standardized amounts only |
-| Graph Analysis | Trace fund flow | Pool mixing + churn |
-| Address Reuse | Link multiple payments | Stealth addresses |
-| Fee Payer Exposure | Identify recipient via gas | Relayer pays gas |
-| Indexer Correlation | Advanced on-chain analysis | Commitment + nullifier |
-| Double-Spend | Withdraw same deposit twice | NullifierPDA uniqueness |
+| Salary Discovery | View employer transactions | Stealth addresses + ZK compression |
+| Employee Identification | Link payment to person | Stealth addresses, invite system |
+| Amount Correlation | Analyze payment amounts | ZK compression hides amounts |
+| Timing Analysis | Correlate deposit/withdraw | Variable delays in privacy pool |
+| Fee Payer Exposure | Identify via gas payment | Relayer pays gas |
+| Address Reuse | Link multiple payments | Fresh stealth address per payment |
 
-### Privacy Scores by Level
+### Privacy Levels Summary
 
-| Level | Score | What's Hidden | What's Visible |
-|-------|-------|---------------|----------------|
-| PUBLIC | 0% | Nothing | Sender, receiver, amount, time |
-| SEMI | 70% | Direct link | Pool deposit/withdraw |
-| ZK_COMPRESSED | 100% | Sender, timing, link | Deposit to pool (not linked to campaign) |
-| PRIVATE | 100% | Sender, amount, link | Pool activity |
-| PRIVATE | 100% | Everything | Only network metadata |
+| Component | What It Hides |
+|-----------|--------------|
+| Stealth Address | Recipient identity |
+| Offuscate Wallet | Sender identity |
+| ZK Compression | Sender + Amount |
+| Privacy Pool | Deposit-withdrawal link |
+| Invite System | Employee-wallet link |
 
-### Best Practices for Users
+### Best Practices
 
-1. **Backup private notes** - Required for withdrawals
-2. **Wait before withdrawing** - More time = more mixing
-3. **Use stealth addresses** - Always for receiving
-4. **Use relayer** - Never pay gas with stealth address
-5. **Vary timing** - Don't deposit/withdraw in patterns
-6. **Use standardized amounts** - Larger anonymity set
+**For Employers:**
+1. Use Offuscate Wallet for payments
+2. Enable ZK compression when possible
+3. Use stealth addresses for recipients
+4. Fund batches from Offuscate Wallet
+
+**For Employees:**
+1. Securely store stealth private key
+2. Accept invites from a fresh browser session
+3. Don't transfer directly from stealth to known wallet
+4. Use privacy pool for additional mixing
 
 ---
 
@@ -737,10 +674,10 @@ Get compressed SOL balance.
 
 ### Prerequisites
 
+- Rust 1.70+
+- Solana CLI 1.18+
+- Anchor 0.31.1
 - Node.js 18+
-- Solana CLI
-- Anchor CLI
-- Helius API key (for Light Protocol)
 
 ### Smart Contract
 
@@ -760,15 +697,14 @@ anchor deploy --provider.cluster devnet
 ```bash
 cd frontend
 
-# Install dependencies
+# Install
 npm install
 
 # Development
 npm run dev
 
-# Production build
-npm run build
-npm start
+# Production
+npm run build && npm start
 ```
 
 ### Environment Variables
@@ -776,59 +712,46 @@ npm start
 ```bash
 # frontend/.env.local
 
-# RPC (Helius recommended for ZK Compression)
+# RPC URL
 NEXT_PUBLIC_RPC_URL=https://devnet.helius-rpc.com?api-key=YOUR_KEY
-NEXT_PUBLIC_HELIUS_API_KEY=YOUR_KEY
-
-# Relayer keypair (base58 encoded)
-RELAYER_SECRET_KEY=<base58_encoded_64_byte_secret>
 
 # Program ID
 NEXT_PUBLIC_PROGRAM_ID=5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
-```
-
-### Relayer Setup
-
-```bash
-# Generate keypair
-solana-keygen new -o relayer.json
-
-# Fund on devnet
-solana airdrop 2 $(solana address -k relayer.json) --url devnet
-
-# Convert to base58
-node -e "console.log(require('bs58').encode(require('./relayer.json')))"
-
-# Add to .env.local
 ```
 
 ---
 
 ## Summary
 
-**Offuscate** provides two privacy-focused products on Solana:
+**Offuscate** is a privacy-first B2B payroll platform providing:
 
-### Private Donations
-- Donate to crowdfunding campaigns
-- **ZK Private** (recommended): Light Protocol ZK Compression
-- **ShadowWire**: Maximum privacy with Bulletproofs
-- **Public**: Traditional transparent donation
+### For Employers
+- Create payroll batches for teams
+- Onboard employees via invite codes
+- Stream salaries per-second
+- Send payments with maximum privacy (ZK + Stealth)
+- Separate "Offuscate Wallet" hides sender identity
+- Easy stealth address sharing on Dashboard
 
-### ShadowMix
-- Personal wallet mixer
-- Two wallet system (Main + Stealth)
-- Commitment-based privacy pool
-- Nobody can steal funds (amount bound in commitment)
-- Standardized amounts increase anonymity
+### For Employees
+- Accept invites without exposing main wallet
+- Salary accrues automatically
+- Claim to stealth address (untraceable)
+- Full privacy from employer and on-chain observers
+- Auto-scan for incoming stealth payments
+- Easy stealth address sharing for receiving payments
+- Choose destination wallet when claiming
 
 ### Privacy Guarantees
-- **Cryptographic unlinkability** between deposits and withdrawals
-- **No on-chain depositor info** - only commitment hash stored
-- **No recipient link** - stealth addresses + relayer
-- **Double-spend prevention** - nullifier system
+- **Sender hidden** via Offuscate Wallet + ZK
+- **Recipient hidden** via Stealth Addresses
+- **Amount hidden** via ZK Compression
+- **Link broken** via Privacy Pool
+- **Identity protected** via Invite System
+- **Role remembered** via localStorage per wallet
 
 ---
 
 *Documentation for Solana Privacy Hackathon 2025*
-*Project: Offuscate - Private Donations & Wallet Mixing on Solana*
+*Project: Offuscate - Privacy-First B2B Payroll*
 *Program ID: `5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq`*

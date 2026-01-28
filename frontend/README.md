@@ -1,6 +1,6 @@
 # Offuscate Frontend
 
-> Privacy-First Donations & Wallet Mixing on Solana
+> Privacy-First B2B Payroll Platform on Solana
 
 ## Quick Start
 
@@ -16,34 +16,51 @@ npm run dev
 
 ## Features
 
-### Private Donations (`/explore`)
-- Browse crowdfunding campaigns
-- Donate with privacy protection
-- **ZK Private** - Light Protocol ZK Compression (recommended)
-- **ShadowWire** - Bulletproofs ZK (maximum privacy)
-- **Public** - Standard transparent donation
+### For Employers
 
-### ShadowMix (`/mixer`)
-- Personal wallet mixer
-- Two wallet system (Main + Stealth)
-- Deposit to privacy pool with standardized amounts
-- Withdraw to stealth wallet (untraceable)
-- Send payments with ZK or direct mode
+**Treasury (`/mixer`):**
+- Wallet balances (Main + Offuscate)
+- Circular balance chart
+- Send private payments with ZK + Stealth
 
-### Campaign Management
-- `/launch` - Create new campaigns
-- `/dashboard` - Manage your campaigns and stealth keys
-- `/activity` - View transaction history
+**Payroll (`/payroll`):**
+- Create payroll batches
+- Generate invite codes with salary config
+- Fund batches, manage employees
+
+**Activity (`/dashboard`):**
+- **Your Stealth Address** card with one-click copy
+- Payment history with filters
+- Stats: distributed, private volume, operations
+
+### For Employees
+
+**Salary (`/salary`):**
+- **Your Stealth Address** card with one-click copy
+- Real-time salary streaming
+- Claim to stealth wallet
+- **StealthPaymentScanner** - Auto-scans for incoming payments
+- Choose destination wallet (Salary/Main) when claiming
+- Anonymous Receipts
+
+**Activity (`/dashboard`):**
+- **Your Stealth Address** card with one-click copy
+- Payment history
+- Streaming salary card
+
+### Privacy Pool (`/pool`)
+- Deposit with commitment
+- Withdraw to stealth address
+- Gasless withdrawals via relayer
 
 ## Privacy Technology
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| 4 | Light Protocol ZK | Groth16 proofs, sender unlinkable |
-| 3 | Commitment System | Cryptographic unlinkability |
-| 2 | Relayer | Gas abstraction |
-| 1 | Privacy Pool | Fund mixing |
-| 0 | Stealth Addresses | One-time addresses |
+| 3 | Light Protocol ZK | Groth16 proofs, hide sender & amount |
+| 2 | Stealth Addresses | One-time ECDH addresses |
+| 1 | Offuscate Wallet | Deterministic keypair, hide sender |
+| 0 | Privacy Pool | Fund mixing |
 
 ## Environment Variables
 
@@ -52,7 +69,6 @@ npm run dev
 
 # Helius RPC (required for ZK Compression)
 NEXT_PUBLIC_RPC_URL=https://devnet.helius-rpc.com?api-key=YOUR_KEY
-NEXT_PUBLIC_HELIUS_API_KEY=YOUR_KEY
 
 # Relayer (base58 encoded keypair)
 RELAYER_SECRET_KEY=<base58_encoded_secret>
@@ -63,30 +79,53 @@ NEXT_PUBLIC_PROGRAM_ID=5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
 
 ## Tech Stack
 
-- **Next.js 15** - React framework
-- **Tailwind CSS 4** - Styling
+- **Next.js 16** - React framework
+- **Tailwind CSS** - Styling
 - **Anchor** - Solana program client
 - **Light Protocol** - ZK Compression
 - **Solana Wallet Adapter** - Wallet connection
+- **@noble/curves** - ECDH for stealth addresses
+- **@noble/hashes** - SHA256 for commitments
 
 ## Project Structure
 
 ```
 app/
-├── page.tsx              # Home
-├── explore/              # Campaigns browser
-├── mixer/                # ShadowMix
-├── launch/               # Create campaign
-├── dashboard/            # User dashboard
+├── page.tsx              # Home / Landing
+├── mixer/                # Treasury dashboard
+├── payroll/              # Payroll management
+├── salary/               # Employee salary view
+├── dashboard/            # Activity / History
+├── pool/                 # Privacy pool
+├── invite/[code]/        # Invite acceptance
 ├── components/
-│   ├── DonationModal     # Privacy donation selection
-│   ├── TraceSimulator    # Traceability test
-│   └── PrivacyFeedback   # Privacy analysis
-└── lib/
-    ├── program/          # Anchor client
-    ├── privacy/          # ZK & commitment system
-    └── stealth/          # Stealth addresses
+│   ├── Header.tsx                # Navigation with role-based links
+│   ├── InviteManager.tsx         # Create/manage invites
+│   ├── EmployeeSalaryCard.tsx    # Salary display
+│   ├── StealthPaymentScanner.tsx # Auto-scan stealth payments
+│   └── ReceiptsCard.tsx          # Anonymous receipts
+├── lib/
+│   ├── program/          # Anchor client & hooks
+│   ├── stealth/          # Stealth address implementation
+│   ├── privacy/          # ZK & commitment system
+│   └── role/             # Role detection with localStorage
+└── api/
+    ├── helius/           # Helius integration
+    ├── light/            # Light Protocol
+    ├── privacy/          # Pool operations
+    └── relayer/          # Gasless claims
 ```
+
+## Key Hooks
+
+### useProgram()
+All program operations: batches, employees, invites, pool, receipts.
+
+### useStealth()
+Stealth key management with `metaAddressString` for easy sharing.
+
+### useRole()
+Role detection (employer/recipient) with localStorage persistence per wallet.
 
 ## Build
 
@@ -98,3 +137,4 @@ npm start
 ---
 
 *Solana Privacy Hackathon 2025*
+*Program ID: `5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq`*

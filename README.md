@@ -1,32 +1,31 @@
-# Offuscate - Private Donations on Solana
+# Offuscate - Privacy-First B2B Payroll on Solana
 
-> **Privacy-first donation platform** that breaks the linkability between donors and recipients through multiple layers of cryptographic privacy.
+> **Enterprise payroll platform** with maximum privacy for employers and employees through stealth addresses, ZK compression, and untraceable payments.
 
 ![Solana](https://img.shields.io/badge/Solana-Devnet-green)
 ![Anchor](https://img.shields.io/badge/Anchor-0.31.1-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![Privacy](https://img.shields.io/badge/Privacy-Maximum-purple)
 
-## Status
+## Overview
 
-**FULLY IMPLEMENTED & DEPLOYED ON DEVNET**
+Offuscate is a **B2B privacy payroll platform** that enables companies to pay employees without exposing salary information on-chain. Employees receive payments to stealth addresses that cannot be linked to their main wallet, ensuring complete financial privacy.
 
-| Feature | Status | Description |
-|---------|--------|-------------|
-| Privacy Pool | Working | Fund mixing with variable delays |
-| Stealth Addresses | Working | One-time ECDH-derived addresses |
-| Relayer (Gasless) | Working | Gas abstraction for recipients |
-| Commitment Privacy | Working | ZK-like commitment/nullifier scheme |
-| Variable Delay | Working | 30s-5min pseudo-random delays |
-| Standardized Amounts | Working | 0.1, 0.5, 1.0 SOL only |
-| Batch Withdrawals | Working | Multiple claims per transaction |
-| Pool Churn | Working | Internal mixing for graph resistance |
+### Key Features
+
+- **Stealth Addresses** - One-time addresses for each payment, unlinkable to employee's main wallet
+- **Easy Stealth Address Sharing** - One-click copy of your stealth meta address on Dashboard and Salary pages
+- **ZK Compression** - Hide sender and amount using zero-knowledge proofs (Light Protocol)
+- **Offuscate Wallet / Salary Wallet** - Derived privacy wallet for transactions
+- **Streaming Payroll** - Real-time salary accrual per second
+- **Invite System** - Onboard employees without exposing their wallet addresses
+- **Auto-Scan Stealth Payments** - Automatic detection of incoming stealth payments
+- **Privacy Pool** - Mix funds for additional unlinkability
 
 ## Deployed Addresses (Devnet)
 
 ```
 Program ID:  5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
-Relayer:     BEfcVt7sUkRC4HVmWn2FHLkKPKMu1uhkXb4dDr5g7A1a
 ```
 
 ## Privacy Architecture
@@ -34,73 +33,95 @@ Relayer:     BEfcVt7sUkRC4HVmWn2FHLkKPKMu1uhkXb4dDr5g7A1a
 ```
                     OFFUSCATE PRIVACY STACK
 ┌─────────────────────────────────────────────────────────────┐
-│  LAYER 3: Commitment + Nullifier (ZK-Like)                  │
-│  └── Even advanced indexers cannot correlate deposits       │
+│  MAXIMUM PRIVACY: ZK + Stealth + Offuscate Wallet           │
+│  └── Sender hidden, Recipient hidden, Amount hidden         │
 ├─────────────────────────────────────────────────────────────┤
-│  LAYER 2: Gas Abstraction (Relayer)                         │
-│  └── Stealth address never appears as fee payer             │
+│  LAYER 3: ZK Compression (Light Protocol)                   │
+│  └── Hides sender address and transaction amount            │
 ├─────────────────────────────────────────────────────────────┤
-│  LAYER 1: Privacy Pool                                      │
-│  └── Variable delay + Standardized amounts + Pool churn     │
+│  LAYER 2: Stealth Addresses                                 │
+│  └── One-time addresses via ECDH key exchange               │
 ├─────────────────────────────────────────────────────────────┤
-│  LAYER 0: Stealth Addresses                                 │
-│  └── One-time addresses derived via ECDH                    │
+│  LAYER 1: Offuscate Wallet / Salary Wallet                  │
+│  └── Deterministic keypair, not linked to main wallet       │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 0: Privacy Pool                                      │
+│  └── Fund mixing with variable delays                       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Platform Pages
+
+### For Employers (Company)
+
+| Page | Route | Description |
+|------|-------|-------------|
+| **Treasury** | `/mixer` | Dashboard with wallet balances, circular chart, and send payments |
+| **Payroll** | `/payroll` | Manage batches, employees, invites, and fund payroll |
+| **Activity** | `/dashboard` | Payment history, stealth address display with easy copy |
+| **Pool** | `/pool` | Privacy pool for additional mixing |
+
+### For Employees (Recipients)
+
+| Page | Route | Description |
+|------|-------|-------------|
+| **Salary** | `/salary` | View accrued salary, claim payments, stealth address with easy copy, auto-scan stealth payments |
+| **Activity** | `/dashboard` | Payment history, stealth address display |
+| **Pool** | `/pool` | Privacy pool access |
+
 ## How It Works
 
-### Maximum Privacy Flow
+### Employer Flow
 
 ```
-Donor Wallet                                         Campaign Owner
-     │                                                      ▲
-     │  1. Generate commitment (secret + nullifier)         │
-     ▼                                                      │
- ┌─────────┐                                                │
- │Commitment│ = SHA256(secret_hash || nullifier || amount)  │
- └────┬────┘                                                │
-      │  2. Deposit to Privacy Pool                         │
-      ▼                                                     │
- ┌─────────────┐                                            │
- │ Pool Vault  │  ← Funds mixed from all donors             │
- └──────┬──────┘                                            │
-        │                                                   │
-        │  3. Variable delay (30s - 5min)                   │
-        ▼                                                   │
- ┌─────────────────┐                                        │
- │ Generate stealth│  ← One-time unlinkable address         │
- │ address         │                                        │
- └────────┬────────┘                                        │
-          │                                                 │
-          │  4. Claim via Relayer (gasless)                 │
-          ▼                                                 │
- ┌──────────────────┐                                       │
- │     Relayer      │  ← Pays gas, no fee payer exposure    │
- └────────┬─────────┘                                       │
-          │                                                 │
-          │  5. Funds to stealth address                    │
-          ▼                                                 │
- ┌─────────────────┐                                        │
- │ Stealth Address │────────────────────────────────────────┘
- └─────────────────┘
-          │
-          │  6. Owner derives spending key
-          ▼
- ┌─────────────────┐
- │ Owner's Wallet  │  ← Clean, unlinkable funds
- └─────────────────┘
+1. Create Batch (department/team)
+        ↓
+2. Generate Invite Codes with salary config
+        ↓
+3. Share invite codes with employees
+        ↓
+4. Fund batch vault
+        ↓
+5. Salary streams automatically per second
 ```
 
-### What Adversaries See vs. Cannot Determine
+### Employee Flow
 
-| What They See | What They Cannot Determine |
-|---------------|---------------------------|
-| Commitment hash | Who deposited |
-| Nullifier hash | Which deposit corresponds |
-| Stealth address | Recipient identity |
-| Standardized amounts | Amount correlation |
-| Variable timing | Timing correlation |
+```
+1. Receive invite code from employer
+        ↓
+2. Accept invite → generates stealth keypair locally
+        ↓
+3. Stealth public key registered on-chain
+        ↓
+4. Salary accrues in real-time
+        ↓
+5. Claim to stealth address (main wallet never exposed)
+```
+
+### Receiving Stealth Payments
+
+```
+1. Copy your Stealth Meta Address from Dashboard or Salary page
+        ↓
+2. Share with sender (format: st:viewPubKey:spendPubKey)
+        ↓
+3. Sender uses address to send private payment
+        ↓
+4. Auto-scan detects incoming payments on Salary page
+        ↓
+5. Choose destination wallet (Salary or Main) and claim
+```
+
+### Payment Privacy Options
+
+| Option | Sender | Recipient | Amount |
+|--------|--------|-----------|--------|
+| Standard | Visible | Visible | Visible |
+| Offuscate Wallet | Hidden | Visible | Visible |
+| Stealth Address | Visible | Hidden | Visible |
+| ZK Compression | Hidden | Visible | Hidden |
+| **ZK + Stealth** | **Hidden** | **Hidden** | **Hidden** |
 
 ## Quick Start
 
@@ -139,39 +160,13 @@ npm run dev
 npm run build && npm start
 ```
 
-### Environment
+### Environment Variables
 
 ```bash
 # frontend/.env.local
-NEXT_PUBLIC_HELIUS_RPC_URL=https://devnet.helius-rpc.com?api-key=YOUR_KEY
-RELAYER_SECRET_KEY=<base58_encoded_keypair>
+NEXT_PUBLIC_RPC_URL=https://devnet.helius-rpc.com?api-key=YOUR_KEY
+NEXT_PUBLIC_PROGRAM_ID=5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
 ```
-
-## Privacy Guarantees
-
-### Threats Mitigated
-
-| Threat | Attack Vector | Mitigation |
-|--------|---------------|------------|
-| Timing Correlation | Match deposit/withdraw times | Variable delay (30s-5min) |
-| Amount Correlation | Match deposit/withdraw amounts | Standardized amounts only |
-| Graph Analysis | Trace fund flow | Pool mixing + churn |
-| Address Reuse | Link multiple payments | Stealth addresses |
-| Fee Payer Exposure | Identify recipient via gas | Relayer pays gas |
-| Indexer Correlation | Advanced on-chain analysis | Commitment + nullifier |
-| Double-Spend | Withdraw same deposit twice | NullifierPDA uniqueness |
-
-### Mathematical Guarantee
-
-Without `secret` and `nullifier_secret` (stored locally only), it is cryptographically impossible to prove which deposit matches which withdrawal, even with complete blockchain access.
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [PRIVACY_SYSTEM_DOCS.md](./PRIVACY_SYSTEM_DOCS.md) | Complete technical documentation |
-| [PRIVACY_POOL.md](./PRIVACY_POOL.md) | Privacy Pool details |
-| [PHASE3_ZK_PRIVACY.md](./PHASE3_ZK_PRIVACY.md) | Commitment/Nullifier system |
 
 ## Project Structure
 
@@ -179,89 +174,162 @@ Without `secret` and `nullifier_secret` (stored locally only), it is cryptograph
 ├── programs/
 │   └── offuscate/
 │       └── src/
-│           └── lib.rs              # Smart contract
+│           └── lib.rs                    # Anchor smart contract
 ├── frontend/
 │   └── app/
 │       ├── components/
-│       │   ├── WaveMeshBackground.tsx  # Animated privacy visualization
-│       │   ├── DonationModal.tsx       # Privacy-aware donations
-│       │   └── PrivacyPoolPanel.tsx    # Pool UI
+│       │   ├── Header.tsx                # Navigation with role-based links
+│       │   ├── InviteManager.tsx         # Create/manage employee invites
+│       │   ├── EmployeeSalaryCard.tsx    # Salary display for employees
+│       │   ├── StealthPaymentScanner.tsx # Auto-scan for stealth payments
+│       │   └── ReceiptsCard.tsx          # Anonymous payment receipts
 │       ├── lib/
-│       │   ├── program/            # Anchor client
-│       │   ├── privacy/            # Commitment/nullifier
-│       │   └── stealth/            # Stealth addresses (ECDH)
-│       └── api/
-│           └── relayer/            # Gasless claim endpoints
-├── PRIVACY_SYSTEM_DOCS.md          # Full documentation
-├── PRIVACY_POOL.md                 # Pool documentation
+│       │   ├── program/
+│       │   │   ├── client.ts             # PDA helpers and constants
+│       │   │   ├── useProgram.ts         # React hook for all operations
+│       │   │   └── idl/                  # Anchor IDL
+│       │   ├── stealth/
+│       │   │   ├── index.ts              # Stealth address implementation
+│       │   │   └── StealthContext.tsx    # React context for stealth keys
+│       │   ├── privacy/
+│       │   │   └── index.ts              # Commitment/nullifier system
+│       │   └── role/
+│       │       └── index.tsx             # Employer/recipient role detection with localStorage persistence
+│       ├── mixer/
+│       │   └── page.tsx                  # Treasury dashboard
+│       ├── payroll/
+│       │   └── page.tsx                  # Payroll management
+│       ├── dashboard/
+│       │   └── page.tsx                  # Activity/history with stealth address card
+│       ├── salary/
+│       │   └── page.tsx                  # Employee salary view with stealth scanner
+│       └── pool/
+│           └── page.tsx                  # Privacy pool
 └── README.md
 ```
+
+## Key Concepts
+
+### Stealth Addresses
+
+Stealth addresses are one-time addresses generated using ECDH key exchange:
+
+1. Employee publishes **stealth meta-address**: `st:<viewPubKey>:<spendPubKey>`
+2. Employer generates **ephemeral keypair** for each payment
+3. Employer computes **shared secret**: `S = ephemeralPrivate * viewPublic`
+4. Employer derives **stealth address** from shared secret + spendPubKey
+5. Employee scans using viewKey, derives spending key to claim
+
+### Easy Stealth Address Sharing
+
+Both Dashboard and Salary pages feature a prominent "Your Stealth Address" card with:
+- Full display of your stealth meta address
+- One-click copy button
+- Helper text explaining usage
+
+### Auto-Scan Stealth Payments
+
+The Salary page automatically scans the Solana Memo Program for incoming stealth payments:
+- Runs on page load
+- Scans recent memo transactions for ephemeral keys
+- Derives stealth addresses to find payments meant for you
+- Choose destination wallet (Salary or Main) when claiming
+
+### ZK Compression (Light Protocol)
+
+ZK compression hides the sender and amount by:
+- Creating compressed accounts with zero-knowledge proofs
+- Sender address not visible on-chain
+- Amount encrypted in the compressed state
+
+### Offuscate Wallet / Salary Wallet
+
+A deterministic keypair derived from the main wallet:
+- Not linked to main wallet on-chain
+- Used for sending private payments
+- Same seed always produces same keypair
+
+### Streaming Payroll
+
+Salary is calculated per-second:
+```
+accruedSalary = salaryRate * (currentTime - lastClaimedAt)
+```
+
+Where `salaryRate` is in lamports/second (e.g., 1000 SOL/month = ~385 lamports/sec)
+
+### Role Persistence
+
+User roles (employer/recipient) are persisted per wallet address in localStorage for instant recognition on reconnect.
+
+## API Reference
+
+### Employer Operations
+
+```typescript
+// Create payroll batch
+const { signature, batchIndex } = await createBatch("Engineering Team");
+
+// Create invite with salary
+const { signature, inviteCode } = await createInvite(campaignId, 1000); // 1000 SOL/month
+
+// Fund batch
+await fundBatch(batchIndex, amountLamports);
+
+// List employees
+const employees = await listBatchEmployees(batchIndex);
+```
+
+### Employee Operations
+
+```typescript
+// Accept invite with stealth keypair
+const stealthKeypair = Keypair.generate();
+await acceptInviteStreaming(inviteCode, stealthMetaAddress, stealthKeypair, batchIndex);
+
+// Check accrued salary
+const record = await findMyEmployeeRecord();
+console.log(`Accrued: ${record.employee.accruedSalary / LAMPORTS_PER_SOL} SOL`);
+
+// Claim salary
+await claimSalaryWithStealth(batchIndex, employeeIndex, stealthKeypair);
+```
+
+### Privacy Pool Operations
+
+```typescript
+// Private deposit with commitment
+const { signature, note } = await privateDeposit(0.5);
+
+// Withdraw to stealth address
+await privateWithdraw(note, stealthKeypair.publicKey);
+
+// Gasless withdrawal via relayer
+const result = await privateWithdrawRelayed(note, stealthKeypair);
+```
+
+## Security Considerations
+
+1. **Stealth Keypair Storage** - Employee must securely store stealth private key locally
+2. **Note Backup** - Private pool notes must be backed up (stored in localStorage)
+3. **Anonymity Set** - Privacy pool effectiveness depends on number of users
+4. **Timing Analysis** - Variable delays help but not perfect against sophisticated analysis
 
 ## Tech Stack
 
 **Smart Contract:**
 - Anchor Framework (Rust)
 - Solana Program Library
-- Ed25519 signature verification on-chain
+- Light Protocol (ZK compression)
 
 **Frontend:**
 - Next.js 16
 - @solana/web3.js
 - @coral-xyz/anchor
-- @noble/hashes (SHA256, ed25519)
-- @noble/curves (x25519 ECDH)
+- @lightprotocol/stateless.js
+- @noble/curves (ECDH)
+- @noble/hashes (SHA256)
 - TailwindCSS
-
-**Privacy Libraries:**
-- Custom stealth address implementation (ECDH curve25519)
-- Commitment/nullifier scheme (SHA256-based, Tornado-inspired)
-
-## Usage Examples
-
-### Private Donation
-
-```typescript
-import { useProgram } from './lib/program';
-
-const { poolDeposit } = useProgram();
-
-// Deposit to Privacy Pool (commitment generated automatically)
-const { signature, note } = await privateDeposit(0.5);
-// note saved to localStorage - REQUIRED for withdrawal
-```
-
-### Gasless Withdrawal
-
-```typescript
-const { privateWithdrawRelayed, getUnspentPrivateNotes } = useProgram();
-
-// Get saved notes
-const notes = await getUnspentPrivateNotes();
-
-// Withdraw via relayer (no gas needed)
-const result = await privateWithdrawRelayed(notes[0], stealthKeypair);
-console.log(`Relayer paid gas: ${result.relayer}`);
-```
-
-## Security Considerations
-
-1. **Backup Notes**: Private notes in localStorage - backup regularly
-2. **Anonymity Set**: More users = stronger privacy
-3. **Wait Before Withdrawing**: More time = more mixing
-4. **Use Stealth Addresses**: Always use as recipient
-5. **Use Relayer**: Never pay gas with stealth address
-
-## Visual Effects
-
-The UI includes an animated wave mesh background that triggers an "offuscation" effect when transactions complete, visually representing the privacy protection. Connections dynamically disconnect and reconnect, symbolizing the unlinkability of transactions.
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/relayer/claim` | GET | Check relayer status |
-| `/api/relayer/claim` | POST | Gasless claim from pool |
-| `/api/relayer/private-claim` | POST | Gasless claim with commitment |
 
 ## Contributing
 
@@ -274,13 +342,6 @@ The UI includes an animated wave mesh background that triggers an "offuscation" 
 ## License
 
 MIT
-
-## Acknowledgments
-
-- Tornado Cash (commitment/nullifier inspiration)
-- Light Protocol (ZK compression concepts)
-- Solana Foundation
-- Helius (RPC infrastructure)
 
 ---
 

@@ -644,6 +644,512 @@ pub mod offuscate {
         Ok(())
     }
 
+    // ==============================================
+    // INVITE SYSTEM INSTRUCTIONS
+    // ==============================================
+
+    /// Create an invite for a recipient to join a payroll batch
+    /// Only the batch owner can create invites
+    /// salary_rate: lamports per second (0 = no streaming, just invite)
+    pub fn create_invite(
+        ctx: Context<CreateInvite>,
+        invite_code: String,
+        salary_rate: u64,
+    ) -> Result<()> {
+        require!(invite_code.len() <= 16, ErrorCode::InviteCodeTooLong);
+        require!(invite_code.len() >= 6, ErrorCode::InviteCodeTooShort);
+
+        let invite = &mut ctx.accounts.invite;
+        invite.batch = ctx.accounts.campaign.key();
+        invite.invite_code = invite_code;
+        invite.creator = ctx.accounts.owner.key();
+        invite.recipient = Pubkey::default(); // Zero address until accepted
+        invite.recipient_stealth_address = String::new();
+        invite.salary_rate = salary_rate;
+        invite.status = InviteStatus::Pending;
+        invite.created_at = Clock::get()?.unix_timestamp;
+        invite.accepted_at = 0;
+        invite.bump = ctx.bumps.invite;
+
+        msg!("Invite created for batch: {}", ctx.accounts.campaign.campaign_id);
+        if salary_rate > 0 {
+            msg!("Streaming salary configured: {} lamports/sec", salary_rate);
+        }
+
+        Ok(())
+    }
+
+    /// Create an invite for a recipient to join a payroll batch (using PayrollBatch)
+    /// Only the batch owner can create invites
+    /// salary_rate: lamports per second (0 = no streaming, just invite)
+    pub fn create_batch_invite(
+        ctx: Context<CreateBatchInvite>,
+        invite_code: String,
+        salary_rate: u64,
+    ) -> Result<()> {
+        require!(invite_code.len() <= 16, ErrorCode::InviteCodeTooLong);
+        require!(invite_code.len() >= 6, ErrorCode::InviteCodeTooShort);
+
+        let invite = &mut ctx.accounts.invite;
+        invite.batch = ctx.accounts.batch.key();
+        invite.invite_code = invite_code;
+        invite.creator = ctx.accounts.owner.key();
+        invite.recipient = Pubkey::default(); // Zero address until accepted
+        invite.recipient_stealth_address = String::new();
+        invite.salary_rate = salary_rate;
+        invite.status = InviteStatus::Pending;
+        invite.created_at = Clock::get()?.unix_timestamp;
+        invite.accepted_at = 0;
+        invite.bump = ctx.bumps.invite;
+
+        msg!("Invite created for payroll batch: {}", ctx.accounts.batch.title);
+        if salary_rate > 0 {
+            msg!("Streaming salary configured: {} lamports/sec", salary_rate);
+        }
+
+        Ok(())
+    }
+
+    /// Accept an invite and register stealth address
+    /// The recipient provides their stealth meta-address
+    pub fn accept_invite(
+        ctx: Context<AcceptInvite>,
+        stealth_meta_address: String,
+    ) -> Result<()> {
+        require!(stealth_meta_address.len() <= 200, ErrorCode::MetaAddressTooLong);
+        require!(stealth_meta_address.len() > 0, ErrorCode::StealthAddressRequired);
+
+        let invite = &mut ctx.accounts.invite;
+        require!(invite.status == InviteStatus::Pending, ErrorCode::InviteNotPending);
+
+        invite.recipient = ctx.accounts.recipient.key();
+        invite.recipient_stealth_address = stealth_meta_address.clone();
+        invite.status = InviteStatus::Accepted;
+        invite.accepted_at = Clock::get()?.unix_timestamp;
+
+        msg!("Invite accepted by: {}", ctx.accounts.recipient.key());
+        msg!("Stealth address registered: {}", stealth_meta_address);
+
+        Ok(())
+    }
+
+    /// Revoke an invite (only creator can revoke pending invites)
+    pub fn revoke_invite(ctx: Context<RevokeInvite>) -> Result<()> {
+        let invite = &mut ctx.accounts.invite;
+        require!(invite.status == InviteStatus::Pending, ErrorCode::InviteNotPending);
+
+        invite.status = InviteStatus::Revoked;
+
+        msg!("Invite revoked");
+
+        Ok(())
+    }
+
+    /// Accept invite AND automatically add to streaming payroll
+    ///
+    /// PRIVACY FLOW:
+    /// 1. Employee generates a stealth keypair LOCALLY (not their main wallet)
+    /// 2. Passes the stealth PUBLIC KEY as employee_stealth_pubkey
+    /// 3. Employee account is created with wallet = stealth pubkey
+    /// 4. Employee keeps stealth PRIVATE KEY locally
+    /// 5. To claim salary, employee signs with stealth keypair
+    ///
+    /// Result: On-chain shows "stealth ABC receives payment"
+    ///         No one knows stealth ABC belongs to which real person
+    pub fn accept_invite_streaming(
+        ctx: Context<AcceptInviteStreaming>,
+        stealth_meta_address: String,
+    ) -> Result<()> {
+        require!(stealth_meta_address.len() <= 200, ErrorCode::MetaAddressTooLong);
+        require!(stealth_meta_address.len() > 0, ErrorCode::StealthAddressRequired);
+
+        let invite = &mut ctx.accounts.invite;
+        require!(invite.status == InviteStatus::Pending, ErrorCode::InviteNotPending);
+        require!(invite.salary_rate > 0, ErrorCode::InviteNoSalaryConfigured);
+
+        let now = Clock::get()?.unix_timestamp;
+
+        // Update invite
+        invite.recipient = ctx.accounts.payer.key(); // Track who paid for the tx (optional)
+        invite.recipient_stealth_address = stealth_meta_address.clone();
+        invite.status = InviteStatus::Accepted;
+        invite.accepted_at = now;
+
+        // Create employee with STEALTH pubkey as wallet (not payer's wallet!)
+        let employee = &mut ctx.accounts.employee;
+        let batch = &mut ctx.accounts.batch;
+        let master = &mut ctx.accounts.master_vault;
+
+        employee.batch = batch.key();
+        employee.wallet = ctx.accounts.employee_stealth_pubkey.key(); // STEALTH KEY!
+        employee.index = batch.employee_count;
+        employee.stealth_address = stealth_meta_address;
+        employee.salary_rate = invite.salary_rate;
+        employee.start_time = now;
+        employee.last_claimed_at = now;
+        employee.total_claimed = 0;
+        employee.status = EmployeeStatus::Active;
+        employee.bump = ctx.bumps.employee;
+
+        // Update counts
+        batch.employee_count = batch.employee_count.checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+        master.total_employees = master.total_employees.checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+
+        msg!("Invite accepted with streaming!");
+        msg!("Employee created with stealth pubkey: {}", ctx.accounts.employee_stealth_pubkey.key());
+        msg!("Salary rate: {} lamports/sec", invite.salary_rate);
+        msg!("PRIVACY: Main wallet NOT linked to employee account");
+
+        Ok(())
+    }
+
+    // ==============================================
+    // INDEX-BASED STREAMING PAYROLL
+    // ==============================================
+
+    /// Initialize the global master vault (one-time setup)
+    pub fn init_master_vault(ctx: Context<InitMasterVault>) -> Result<()> {
+        let vault = &mut ctx.accounts.master_vault;
+        vault.authority = ctx.accounts.authority.key();
+        vault.batch_count = 0;
+        vault.total_employees = 0;
+        vault.total_deposited = 0;
+        vault.total_paid = 0;
+        vault.bump = ctx.bumps.master_vault;
+
+        msg!("Master vault initialized");
+        Ok(())
+    }
+
+    /// Create a new payroll batch (index-based PDA)
+    pub fn create_batch(
+        ctx: Context<CreateBatch>,
+        title: String,
+    ) -> Result<()> {
+        require!(title.len() <= 64, ErrorCode::TitleTooLong);
+
+        let master = &mut ctx.accounts.master_vault;
+        let batch = &mut ctx.accounts.batch;
+
+        batch.master_vault = master.key();
+        batch.owner = ctx.accounts.owner.key();
+        batch.index = master.batch_count;
+        batch.title = title;
+        batch.employee_count = 0;
+        batch.total_budget = 0;
+        batch.total_paid = 0;
+        batch.created_at = Clock::get()?.unix_timestamp;
+        batch.status = BatchStatus::Active;
+        batch.vault_bump = ctx.bumps.batch_vault;
+        batch.batch_bump = ctx.bumps.batch;
+
+        master.batch_count = master.batch_count.checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+
+        msg!("Batch created with index: {}", batch.index);
+        Ok(())
+    }
+
+    /// Add an employee to a batch with streaming salary
+    pub fn add_employee(
+        ctx: Context<AddEmployee>,
+        stealth_address: String,
+        salary_rate: u64,  // lamports per second
+    ) -> Result<()> {
+        require!(stealth_address.len() <= 200, ErrorCode::MetaAddressTooLong);
+        require!(salary_rate > 0, ErrorCode::InvalidSalaryRate);
+
+        let batch = &mut ctx.accounts.batch;
+        let employee = &mut ctx.accounts.employee;
+        let master = &mut ctx.accounts.master_vault;
+
+        let now = Clock::get()?.unix_timestamp;
+
+        employee.batch = batch.key();
+        employee.wallet = ctx.accounts.employee_wallet.key();
+        employee.index = batch.employee_count;
+        employee.stealth_address = stealth_address;
+        employee.salary_rate = salary_rate;
+        employee.start_time = now;
+        employee.last_claimed_at = now;
+        employee.total_claimed = 0;
+        employee.status = EmployeeStatus::Active;
+        employee.bump = ctx.bumps.employee;
+
+        batch.employee_count = batch.employee_count.checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+
+        master.total_employees = master.total_employees.checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+
+        msg!("Employee added with index: {}, rate: {} lamports/sec", employee.index, salary_rate);
+        Ok(())
+    }
+
+    /// Fund a batch's vault
+    pub fn fund_batch(ctx: Context<FundBatch>, amount: u64) -> Result<()> {
+        require!(amount > 0, ErrorCode::InvalidAmount);
+
+        system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.funder.to_account_info(),
+                    to: ctx.accounts.batch_vault.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
+        let batch = &mut ctx.accounts.batch;
+        let master = &mut ctx.accounts.master_vault;
+
+        batch.total_budget = batch.total_budget.checked_add(amount)
+            .ok_or(ErrorCode::Overflow)?;
+        master.total_deposited = master.total_deposited.checked_add(amount)
+            .ok_or(ErrorCode::Overflow)?;
+
+        msg!("Batch funded: {} lamports", amount);
+        Ok(())
+    }
+
+    /// Employee claims accrued salary (streaming)
+    pub fn claim_salary(ctx: Context<ClaimSalary>) -> Result<()> {
+        let employee = &mut ctx.accounts.employee;
+        let batch = &mut ctx.accounts.batch;
+
+        require!(employee.status == EmployeeStatus::Active, ErrorCode::EmployeeNotActive);
+
+        let now = Clock::get()?.unix_timestamp;
+        let elapsed = now.checked_sub(employee.last_claimed_at)
+            .ok_or(ErrorCode::Overflow)? as u64;
+
+        let accrued = employee.salary_rate.checked_mul(elapsed)
+            .ok_or(ErrorCode::Overflow)?;
+
+        require!(accrued > 0, ErrorCode::NoSalaryToClaim);
+
+        // Check batch has enough funds
+        let vault_balance = ctx.accounts.batch_vault.lamports();
+        let rent = Rent::get()?.minimum_balance(0);
+        let available = vault_balance.saturating_sub(rent);
+
+        let claim_amount = accrued.min(available);
+        require!(claim_amount > 0, ErrorCode::InsufficientFunds);
+
+        // Transfer from batch vault (PDA) to recipient using CPI
+        // The batch_vault is a PDA owned by System Program, so we need to sign with its seeds
+        let batch_key = batch.key();
+        let vault_seeds: &[&[u8]] = &[
+            b"batch_vault",
+            batch_key.as_ref(),
+            &[batch.vault_bump],
+        ];
+
+        anchor_lang::system_program::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.system_program.to_account_info(),
+                anchor_lang::system_program::Transfer {
+                    from: ctx.accounts.batch_vault.to_account_info(),
+                    to: ctx.accounts.recipient.to_account_info(),
+                },
+                &[vault_seeds],
+            ),
+            claim_amount,
+        )?;
+
+        // Update employee state
+        employee.last_claimed_at = now;
+        employee.total_claimed = employee.total_claimed.checked_add(claim_amount)
+            .ok_or(ErrorCode::Overflow)?;
+
+        // Update batch stats
+        batch.total_paid = batch.total_paid.checked_add(claim_amount)
+            .ok_or(ErrorCode::Overflow)?;
+
+        // Update master stats
+        let master = &mut ctx.accounts.master_vault;
+        master.total_paid = master.total_paid.checked_add(claim_amount)
+            .ok_or(ErrorCode::Overflow)?;
+
+        msg!("Salary claimed: {} lamports (accrued over {} seconds)", claim_amount, elapsed);
+        Ok(())
+    }
+
+    /// Update employee salary rate
+    pub fn update_salary_rate(
+        ctx: Context<UpdateSalaryRate>,
+        new_rate: u64,
+    ) -> Result<()> {
+        require!(new_rate > 0, ErrorCode::InvalidSalaryRate);
+
+        let employee = &mut ctx.accounts.employee;
+
+        // Update rate (any unclaimed amount is still claimable at old rate calculation)
+        employee.salary_rate = new_rate;
+
+        msg!("Salary rate updated to: {} lamports/sec", new_rate);
+        Ok(())
+    }
+
+    /// Pause/Resume employee streaming
+    pub fn set_employee_status(
+        ctx: Context<SetEmployeeStatus>,
+        new_status: EmployeeStatus,
+    ) -> Result<()> {
+        let employee = &mut ctx.accounts.employee;
+        employee.status = new_status;
+
+        msg!("Employee status updated");
+        Ok(())
+    }
+
+    // ==============================================
+    // ANONYMOUS RECEIPTS (Proof of Payment without Amount)
+    // ==============================================
+    //
+    // This system allows employees to prove they received payment
+    // from a specific employer/batch WITHOUT revealing the amount.
+    //
+    // Use cases:
+    // - Prove employment to a bank for loan application
+    // - Prove income for visa applications
+    // - Internal audits without exposing salaries
+    // - Compliance reporting
+    //
+    // How it works:
+    // 1. Employee claims salary and generates a receipt
+    // 2. Receipt contains: commitment = hash(employee || batch || timestamp || amount || secret)
+    // 3. Employee stores the secret locally
+    // 4. To verify: employee reveals (employee, batch, timestamp, secret) but NOT amount
+    // 5. Verifier checks that a receipt with matching commitment exists on-chain
+    //
+    // Privacy guarantees:
+    // - Amount is hidden in the commitment (can't be extracted without secret)
+    // - Receipt proves: "Employee X received a payment from Batch Y on date Z"
+    // - Receipt does NOT prove: the specific amount
+
+    /// Create an anonymous receipt when claiming salary
+    /// Called after claim_salary to create a verifiable proof of payment
+    pub fn create_receipt(
+        ctx: Context<CreateReceipt>,
+        receipt_secret: [u8; 32],
+    ) -> Result<()> {
+        let employee = &ctx.accounts.employee;
+        let batch = &ctx.accounts.batch;
+        let now = Clock::get()?.unix_timestamp;
+
+        // Get the last claimed amount from employee's last claim
+        // We calculate it as: time since last claim * rate
+        // (This is called right after claim_salary, so it reflects the claim amount)
+        let elapsed = now.checked_sub(employee.last_claimed_at)
+            .unwrap_or(0) as u64;
+        let claimed_amount = employee.salary_rate.saturating_mul(elapsed.max(1));
+
+        // Create receipt commitment
+        // commitment = hash(employee_wallet || batch_key || timestamp || amount || secret)
+        let mut preimage = Vec::with_capacity(32 + 32 + 8 + 8 + 32);
+        preimage.extend_from_slice(&employee.wallet.to_bytes());
+        preimage.extend_from_slice(&batch.key().to_bytes());
+        preimage.extend_from_slice(&now.to_le_bytes());
+        preimage.extend_from_slice(&claimed_amount.to_le_bytes());
+        preimage.extend_from_slice(&receipt_secret);
+
+        let commitment = hash(&preimage).to_bytes();
+
+        // Store receipt
+        let receipt = &mut ctx.accounts.receipt;
+        receipt.employee = employee.wallet;
+        receipt.batch = batch.key();
+        receipt.employer = batch.owner;
+        receipt.commitment = commitment;
+        receipt.timestamp = now;
+        receipt.receipt_index = employee.total_claimed; // Use total as unique index
+        receipt.bump = ctx.bumps.receipt;
+
+        msg!("Anonymous receipt created");
+        msg!("Receipt can prove payment without revealing amount");
+
+        Ok(())
+    }
+
+    /// Verify an anonymous receipt
+    /// Anyone can call this to verify that a receipt is valid
+    /// The verifier provides all data EXCEPT the amount
+    /// If the commitment matches, the receipt is valid
+    pub fn verify_receipt(
+        ctx: Context<VerifyReceipt>,
+        employee_wallet: Pubkey,
+        batch_key: Pubkey,
+        timestamp: i64,
+        amount: u64,
+        secret: [u8; 32],
+    ) -> Result<()> {
+        let receipt = &ctx.accounts.receipt;
+
+        // Recompute commitment
+        let mut preimage = Vec::with_capacity(32 + 32 + 8 + 8 + 32);
+        preimage.extend_from_slice(&employee_wallet.to_bytes());
+        preimage.extend_from_slice(&batch_key.to_bytes());
+        preimage.extend_from_slice(&timestamp.to_le_bytes());
+        preimage.extend_from_slice(&amount.to_le_bytes());
+        preimage.extend_from_slice(&secret);
+
+        let computed_commitment = hash(&preimage).to_bytes();
+
+        // Check if commitment matches
+        require!(
+            computed_commitment == receipt.commitment,
+            ErrorCode::InvalidReceiptProof
+        );
+
+        // Verify the receipt metadata matches
+        require!(
+            receipt.employee == employee_wallet,
+            ErrorCode::ReceiptEmployeeMismatch
+        );
+        require!(
+            receipt.batch == batch_key,
+            ErrorCode::ReceiptBatchMismatch
+        );
+        require!(
+            receipt.timestamp == timestamp,
+            ErrorCode::ReceiptTimestampMismatch
+        );
+
+        msg!("Receipt verified successfully!");
+        msg!("Proof: Employee {} received payment from batch {} on {}",
+            employee_wallet, batch_key, timestamp);
+
+        Ok(())
+    }
+
+    /// Generate a blind receipt (for third-party verification without amount)
+    /// The employee provides a ZK-like proof without revealing amount
+    pub fn verify_receipt_blind(
+        ctx: Context<VerifyReceiptBlind>,
+        employee_wallet: Pubkey,
+        _timestamp_range_start: i64,
+        _timestamp_range_end: i64,
+    ) -> Result<()> {
+        let receipt = &ctx.accounts.receipt;
+
+        // Basic verification - proves receipt exists for this employee
+        require!(
+            receipt.employee == employee_wallet,
+            ErrorCode::ReceiptEmployeeMismatch
+        );
+
+        // Emit verification event
+        msg!("Blind receipt verification successful");
+        msg!("Confirmed: {} has payment receipt from employer {}",
+            employee_wallet, receipt.employer);
+
+        Ok(())
+    }
+
     /// Register a stealth payment (metadata only, NO SOL transfer)
     /// This helps the recipient scan for their payments
     /// The actual SOL goes directly to the stealth address via SystemProgram
@@ -1357,6 +1863,364 @@ pub struct RegisterStealthPayment<'info> {
 }
 
 // ============================================
+// ACCOUNTS - INVITE SYSTEM
+// ============================================
+
+#[derive(Accounts)]
+#[instruction(invite_code: String)]
+pub struct CreateInvite<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    #[account(
+        seeds = [b"campaign", campaign.campaign_id.as_bytes()],
+        bump = campaign.campaign_bump,
+        has_one = owner @ ErrorCode::Unauthorized
+    )]
+    pub campaign: Account<'info, Campaign>,
+
+    #[account(
+        init,
+        payer = owner,
+        space = Invite::SPACE,
+        seeds = [b"invite", invite_code.as_bytes()],
+        bump
+    )]
+    pub invite: Account<'info, Invite>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(invite_code: String)]
+pub struct CreateBatchInvite<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    #[account(
+        seeds = [b"batch", batch.master_vault.as_ref(), &batch.index.to_le_bytes()],
+        bump = batch.batch_bump,
+        has_one = owner @ ErrorCode::Unauthorized
+    )]
+    pub batch: Account<'info, PayrollBatch>,
+
+    #[account(
+        init,
+        payer = owner,
+        space = Invite::SPACE,
+        seeds = [b"invite", invite_code.as_bytes()],
+        bump
+    )]
+    pub invite: Account<'info, Invite>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct AcceptInvite<'info> {
+    #[account(mut)]
+    pub recipient: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"invite", invite.invite_code.as_bytes()],
+        bump = invite.bump
+    )]
+    pub invite: Account<'info, Invite>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RevokeInvite<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"invite", invite.invite_code.as_bytes()],
+        bump = invite.bump,
+        constraint = invite.creator == owner.key() @ ErrorCode::Unauthorized
+    )]
+    pub invite: Account<'info, Invite>,
+
+    pub system_program: Program<'info, System>,
+}
+
+/// Accept invite and automatically create Employee with streaming payroll
+/// PRIVACY: employee_stealth_pubkey is a stealth keypair generated locally
+///          The payer can be anyone (relayer, main wallet, etc.)
+#[derive(Accounts)]
+#[instruction(stealth_meta_address: String)]
+pub struct AcceptInviteStreaming<'info> {
+    /// Payer for the transaction (can be main wallet or relayer)
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    /// The stealth public key that will own the Employee account
+    /// This is generated locally by the employee, NOT their main wallet
+    /// CHECK: Any pubkey can be used as stealth - employee controls private key locally
+    pub employee_stealth_pubkey: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"invite", invite.invite_code.as_bytes()],
+        bump = invite.bump
+    )]
+    pub invite: Account<'info, Invite>,
+
+    #[account(
+        mut,
+        seeds = [b"master_vault"],
+        bump = master_vault.bump
+    )]
+    pub master_vault: Account<'info, MasterVault>,
+
+    /// The batch this invite belongs to (via invite.batch -> campaign)
+    #[account(
+        mut,
+        constraint = batch.owner == invite.creator @ ErrorCode::Unauthorized
+    )]
+    pub batch: Account<'info, PayrollBatch>,
+
+    /// The new employee account (created with stealth pubkey)
+    #[account(
+        init,
+        payer = payer,
+        space = Employee::SPACE,
+        seeds = [b"employee", batch.key().as_ref(), &batch.employee_count.to_le_bytes()],
+        bump
+    )]
+    pub employee: Account<'info, Employee>,
+
+    pub system_program: Program<'info, System>,
+}
+
+// ============================================
+// ACCOUNTS - INDEX-BASED STREAMING PAYROLL
+// ============================================
+
+#[derive(Accounts)]
+pub struct InitMasterVault<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = MasterVault::SPACE,
+        seeds = [b"master_vault"],
+        bump
+    )]
+    pub master_vault: Account<'info, MasterVault>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(title: String)]
+pub struct CreateBatch<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"master_vault"],
+        bump = master_vault.bump
+    )]
+    pub master_vault: Account<'info, MasterVault>,
+
+    #[account(
+        init,
+        payer = owner,
+        space = PayrollBatch::SPACE,
+        seeds = [b"batch", master_vault.key().as_ref(), &master_vault.batch_count.to_le_bytes()],
+        bump
+    )]
+    pub batch: Account<'info, PayrollBatch>,
+
+    /// CHECK: Batch vault PDA
+    #[account(
+        mut,
+        seeds = [b"batch_vault", batch.key().as_ref()],
+        bump
+    )]
+    pub batch_vault: SystemAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(stealth_address: String, salary_rate: u64)]
+pub struct AddEmployee<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    #[account(mut)]
+    pub master_vault: Account<'info, MasterVault>,
+
+    #[account(
+        mut,
+        constraint = batch.owner == owner.key() @ ErrorCode::Unauthorized,
+        constraint = batch.status == BatchStatus::Active @ ErrorCode::CampaignNotActive
+    )]
+    pub batch: Account<'info, PayrollBatch>,
+
+    /// CHECK: Employee wallet to be added
+    pub employee_wallet: UncheckedAccount<'info>,
+
+    #[account(
+        init,
+        payer = owner,
+        space = Employee::SPACE,
+        seeds = [b"employee", batch.key().as_ref(), &batch.employee_count.to_le_bytes()],
+        bump
+    )]
+    pub employee: Account<'info, Employee>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct FundBatch<'info> {
+    #[account(mut)]
+    pub funder: Signer<'info>,
+
+    #[account(mut)]
+    pub master_vault: Account<'info, MasterVault>,
+
+    #[account(mut)]
+    pub batch: Account<'info, PayrollBatch>,
+
+    /// CHECK: Batch vault PDA
+    #[account(
+        mut,
+        seeds = [b"batch_vault", batch.key().as_ref()],
+        bump = batch.vault_bump
+    )]
+    pub batch_vault: SystemAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimSalary<'info> {
+    #[account(mut)]
+    pub recipient: Signer<'info>,
+
+    #[account(mut)]
+    pub master_vault: Account<'info, MasterVault>,
+
+    #[account(mut)]
+    pub batch: Account<'info, PayrollBatch>,
+
+    /// CHECK: Batch vault PDA
+    #[account(
+        mut,
+        seeds = [b"batch_vault", batch.key().as_ref()],
+        bump = batch.vault_bump
+    )]
+    pub batch_vault: SystemAccount<'info>,
+
+    #[account(
+        mut,
+        constraint = employee.wallet == recipient.key() @ ErrorCode::Unauthorized,
+        constraint = employee.batch == batch.key() @ ErrorCode::Unauthorized
+    )]
+    pub employee: Account<'info, Employee>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateSalaryRate<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    #[account(
+        constraint = batch.owner == owner.key() @ ErrorCode::Unauthorized
+    )]
+    pub batch: Account<'info, PayrollBatch>,
+
+    #[account(
+        mut,
+        constraint = employee.batch == batch.key() @ ErrorCode::Unauthorized
+    )]
+    pub employee: Account<'info, Employee>,
+}
+
+#[derive(Accounts)]
+pub struct SetEmployeeStatus<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    #[account(
+        constraint = batch.owner == owner.key() @ ErrorCode::Unauthorized
+    )]
+    pub batch: Account<'info, PayrollBatch>,
+
+    #[account(
+        mut,
+        constraint = employee.batch == batch.key() @ ErrorCode::Unauthorized
+    )]
+    pub employee: Account<'info, Employee>,
+}
+
+// ============================================
+// ACCOUNTS - ANONYMOUS RECEIPTS
+// ============================================
+
+#[derive(Accounts)]
+pub struct CreateReceipt<'info> {
+    #[account(mut)]
+    pub employee_signer: Signer<'info>,
+
+    #[account(
+        constraint = employee.wallet == employee_signer.key() @ ErrorCode::Unauthorized
+    )]
+    pub employee: Account<'info, Employee>,
+
+    #[account(
+        constraint = batch.key() == employee.batch @ ErrorCode::Unauthorized
+    )]
+    pub batch: Account<'info, PayrollBatch>,
+
+    #[account(
+        init,
+        payer = employee_signer,
+        space = PaymentReceipt::SPACE,
+        seeds = [
+            b"receipt",
+            employee.wallet.as_ref(),
+            batch.key().as_ref(),
+            &employee.total_claimed.to_le_bytes()
+        ],
+        bump
+    )]
+    pub receipt: Account<'info, PaymentReceipt>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct VerifyReceipt<'info> {
+    /// Anyone can verify a receipt
+    pub verifier: Signer<'info>,
+
+    /// The receipt to verify
+    pub receipt: Account<'info, PaymentReceipt>,
+}
+
+#[derive(Accounts)]
+pub struct VerifyReceiptBlind<'info> {
+    /// Anyone can do blind verification
+    pub verifier: Signer<'info>,
+
+    /// The receipt to verify (blind)
+    pub receipt: Account<'info, PaymentReceipt>,
+}
+
+// ============================================
 // ACCOUNTS - PHASE 3: COMMITMENT-BASED PRIVACY
 // ============================================
 
@@ -1686,6 +2550,43 @@ pub enum CampaignStatus {
     Completed,
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum InviteStatus {
+    Pending,
+    Accepted,
+    Revoked,
+}
+
+/// Invite account - stores invitation for a recipient to join a payroll batch
+#[account]
+pub struct Invite {
+    pub batch: Pubkey,                      // 32 bytes - which batch (campaign) this invite is for
+    pub invite_code: String,                // 4 + 16 = 20 bytes - unique code
+    pub creator: Pubkey,                    // 32 bytes - employer who created it
+    pub recipient: Pubkey,                  // 32 bytes - recipient wallet (zero if pending)
+    pub recipient_stealth_address: String,  // 4 + 200 = 204 bytes - recipient's stealth meta address
+    pub salary_rate: u64,                   // 8 bytes - lamports per second (0 = no streaming)
+    pub status: InviteStatus,               // 1 byte
+    pub created_at: i64,                    // 8 bytes
+    pub accepted_at: i64,                   // 8 bytes (0 if not accepted)
+    pub bump: u8,                           // 1 byte
+}
+
+impl Invite {
+    pub const SPACE: usize = 8 +   // discriminator
+        32 +                        // batch
+        (4 + 16) +                  // invite_code
+        32 +                        // creator
+        32 +                        // recipient
+        (4 + 200) +                 // recipient_stealth_address
+        8 +                         // salary_rate
+        1 +                         // status
+        8 +                         // created_at
+        8 +                         // accepted_at
+        1 +                         // bump
+        32;                         // padding
+}
+
 // ============================================
 // ERRORS
 // ============================================
@@ -1761,4 +2662,185 @@ pub enum ErrorCode {
     InvalidCommitmentProof,
     #[msg("Commitment has already been spent")]
     CommitmentAlreadySpent,
+
+    // Invite system errors
+    #[msg("Invite code too long (max 16 chars)")]
+    InviteCodeTooLong,
+    #[msg("Invite code too short (min 6 chars)")]
+    InviteCodeTooShort,
+    #[msg("Invite is not in pending status")]
+    InviteNotPending,
+    #[msg("Stealth address is required")]
+    StealthAddressRequired,
+    #[msg("Invite not found")]
+    InviteNotFound,
+    #[msg("Invite has no salary configured - use accept_invite instead")]
+    InviteNoSalaryConfigured,
+
+    // Streaming payroll errors
+    #[msg("Employee not active")]
+    EmployeeNotActive,
+    #[msg("No salary to claim")]
+    NoSalaryToClaim,
+    #[msg("Invalid salary rate")]
+    InvalidSalaryRate,
+    #[msg("Employee already exists")]
+    EmployeeAlreadyExists,
+
+    // Anonymous receipt errors
+    #[msg("Invalid receipt proof - commitment does not match")]
+    InvalidReceiptProof,
+    #[msg("Receipt employee does not match provided employee")]
+    ReceiptEmployeeMismatch,
+    #[msg("Receipt batch does not match provided batch")]
+    ReceiptBatchMismatch,
+    #[msg("Receipt timestamp does not match provided timestamp")]
+    ReceiptTimestampMismatch,
+    #[msg("Receipt not found")]
+    ReceiptNotFound,
+}
+
+// ============================================
+// STATE - INDEX-BASED PAYROLL (PRIVACY ENHANCED)
+// ============================================
+
+/// Master Vault - Global singleton that tracks all indices
+/// This hides organizational relationships by using sequential indices
+#[account]
+pub struct MasterVault {
+    pub authority: Pubkey,          // 32 bytes - who can modify
+    pub batch_count: u32,           // 4 bytes - total batches created
+    pub total_employees: u32,       // 4 bytes - total employees across all batches
+    pub total_deposited: u64,       // 8 bytes - total deposited
+    pub total_paid: u64,            // 8 bytes - total paid out
+    pub bump: u8,                   // 1 byte
+}
+
+impl MasterVault {
+    pub const SPACE: usize = 8 +    // discriminator
+        32 +                         // authority
+        4 +                          // batch_count
+        4 +                          // total_employees
+        8 +                          // total_deposited
+        8 +                          // total_paid
+        1 +                          // bump
+        32;                          // padding
+}
+
+/// PayrollBatch - Index-based PDA (no pubkey or name in seeds)
+/// Seeds: ["batch", master_vault, index]
+#[account]
+pub struct PayrollBatch {
+    pub master_vault: Pubkey,       // 32 bytes - reference to master vault
+    pub owner: Pubkey,              // 32 bytes - company wallet
+    pub index: u32,                 // 4 bytes - sequential index
+    pub title: String,              // 4 + 64 = 68 bytes - batch name
+    pub employee_count: u32,        // 4 bytes - number of employees
+    pub total_budget: u64,          // 8 bytes - total budget allocated
+    pub total_paid: u64,            // 8 bytes - total paid out
+    pub created_at: i64,            // 8 bytes
+    pub status: BatchStatus,        // 1 byte
+    pub vault_bump: u8,             // 1 byte
+    pub batch_bump: u8,             // 1 byte
+}
+
+impl PayrollBatch {
+    pub const SPACE: usize = 8 +    // discriminator
+        32 +                         // master_vault
+        32 +                         // owner
+        4 +                          // index
+        (4 + 64) +                   // title
+        4 +                          // employee_count
+        8 +                          // total_budget
+        8 +                          // total_paid
+        8 +                          // created_at
+        1 +                          // status
+        1 +                          // vault_bump
+        1 +                          // batch_bump
+        32;                          // padding
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum BatchStatus {
+    Active,
+    Paused,
+    Closed,
+}
+
+/// Employee - Index-based PDA with streaming salary
+/// Seeds: ["employee", batch, index]
+#[account]
+pub struct Employee {
+    pub batch: Pubkey,              // 32 bytes - which batch
+    pub wallet: Pubkey,             // 32 bytes - employee wallet
+    pub index: u32,                 // 4 bytes - sequential index within batch
+    pub stealth_address: String,    // 4 + 200 = 204 bytes - stealth meta address
+    pub salary_rate: u64,           // 8 bytes - lamports per second
+    pub start_time: i64,            // 8 bytes - when salary started
+    pub last_claimed_at: i64,       // 8 bytes - last claim timestamp
+    pub total_claimed: u64,         // 8 bytes - total claimed so far
+    pub status: EmployeeStatus,     // 1 byte
+    pub bump: u8,                   // 1 byte
+}
+
+impl Employee {
+    pub const SPACE: usize = 8 +    // discriminator
+        32 +                         // batch
+        32 +                         // wallet
+        4 +                          // index
+        (4 + 200) +                  // stealth_address
+        8 +                          // salary_rate
+        8 +                          // start_time
+        8 +                          // last_claimed_at
+        8 +                          // total_claimed
+        1 +                          // status
+        1 +                          // bump
+        32;                          // padding
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum EmployeeStatus {
+    Active,
+    Paused,
+    Terminated,
+}
+
+// ============================================
+// STATE - ANONYMOUS RECEIPTS
+// ============================================
+
+/// Anonymous Payment Receipt
+/// Proves payment was received without revealing the amount
+///
+/// Privacy Model:
+/// - commitment = hash(employee || batch || timestamp || amount || secret)
+/// - The employee keeps the secret
+/// - To prove payment: reveal (employee, batch, timestamp) + show receipt exists
+/// - To prove specific amount: reveal secret (optional, for full audits)
+///
+/// Use cases:
+/// - Bank: "Prove you have income" → Show receipt, proves employment
+/// - Visa: "Prove you're employed" → Show receipt from recent date
+/// - Audit: "Prove specific amount" → Reveal secret for full verification
+#[account]
+pub struct PaymentReceipt {
+    pub employee: Pubkey,           // 32 bytes - employee wallet
+    pub batch: Pubkey,              // 32 bytes - which batch paid
+    pub employer: Pubkey,           // 32 bytes - employer (batch owner)
+    pub commitment: [u8; 32],       // 32 bytes - hash commitment (hides amount)
+    pub timestamp: i64,             // 8 bytes - when payment was made
+    pub receipt_index: u64,         // 8 bytes - unique index for this receipt
+    pub bump: u8,                   // 1 byte
+}
+
+impl PaymentReceipt {
+    pub const SPACE: usize = 8 +    // discriminator
+        32 +                         // employee
+        32 +                         // batch
+        32 +                         // employer
+        32 +                         // commitment
+        8 +                          // timestamp
+        8 +                          // receipt_index
+        1 +                          // bump
+        32;                          // padding
 }

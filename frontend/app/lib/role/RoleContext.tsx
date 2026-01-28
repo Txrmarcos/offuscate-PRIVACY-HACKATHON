@@ -23,6 +23,8 @@ const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
 const idl = idlJson as Idl;
 
+const ROLE_STORAGE_PREFIX = 'offuscate:role:';
+
 export function RoleProvider({ children }: { children: ReactNode }) {
   const { connection } = useConnection();
   const { connected, publicKey } = useWallet();
@@ -32,13 +34,37 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
 
-  // Wrapper to set role and disable onboarding
+  // Helper to get storage key for wallet
+  const getStorageKey = (wallet: string) => `${ROLE_STORAGE_PREFIX}${wallet}`;
+
+  // Helper to save role to localStorage
+  const saveRoleToStorage = (wallet: string, role: UserRole) => {
+    if (typeof window === 'undefined') return;
+    if (role) {
+      localStorage.setItem(getStorageKey(wallet), role);
+    }
+  };
+
+  // Helper to load role from localStorage
+  const loadRoleFromStorage = (wallet: string): UserRole => {
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem(getStorageKey(wallet));
+    if (stored === 'employer' || stored === 'recipient') {
+      return stored;
+    }
+    return null;
+  };
+
+  // Wrapper to set role, disable onboarding, and save to localStorage
   const setRole = useCallback((newRole: UserRole) => {
     setRoleState(newRole);
     if (newRole) {
       setNeedsOnboarding(false);
+      if (publicKey) {
+        saveRoleToStorage(publicKey.toBase58(), newRole);
+      }
     }
-  }, []);
+  }, [publicKey]);
 
   // Track last checked wallet to avoid infinite loops
   const lastCheckedWallet = useRef<string | null>(null);
@@ -92,6 +118,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       if (isEmployer) {
         setRoleState('employer');
         setNeedsOnboarding(false);
+        saveRoleToStorage(walletAddress, 'employer');
         lastCheckedWallet.current = walletAddress;
         setIsLoading(false);
         isChecking.current = false;
@@ -109,6 +136,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         if (isRecipient) {
           setRoleState('recipient');
           setNeedsOnboarding(false);
+          saveRoleToStorage(walletAddress, 'recipient');
           lastCheckedWallet.current = walletAddress;
           setIsLoading(false);
           isChecking.current = false;
@@ -143,6 +171,16 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (connected && publicKey) {
       const walletAddress = publicKey.toBase58();
+
+      // First, try to load from localStorage for instant UI update
+      const storedRole = loadRoleFromStorage(walletAddress);
+      if (storedRole) {
+        setRoleState(storedRole);
+        setNeedsOnboarding(false);
+        setIsLoading(false);
+      }
+
+      // Then verify with on-chain data (in background)
       if (lastCheckedWallet.current !== walletAddress) {
         refreshRole(false); // Don't force on initial load
       }

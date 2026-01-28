@@ -13,13 +13,23 @@ import {
   PendingWithdrawData,
   ChurnVaultData,
   InviteData,
+  MasterVaultData,
+  PayrollBatchData,
+  EmployeeData,
+  PaymentReceiptData,
   getCampaignPDAs,
   getStealthRegistryPDA,
   getPrivacyPoolPDAs,
   getPendingWithdrawPDA,
   getChurnVaultPDAs,
   getInvitePDA,
+  getMasterVaultPDA,
+  getBatchPDA,
+  getBatchVaultPDA,
+  getEmployeePDA,
+  getReceiptPDA,
   fetchVaultBalance as fetchVaultBalanceFn,
+  generateReceiptSecret,
   ALLOWED_WITHDRAW_AMOUNTS,
   WITHDRAW_DELAY_SECONDS,
   MIN_DELAY_SECONDS,
@@ -267,23 +277,37 @@ export function useProgram() {
 
   /**
    * Create an invite for a recipient to join a payroll batch
+   * @param batchPdaBase58 - The batch PDA as base58 string
+   * @param monthlySalarySol - Monthly salary in SOL (0 = no streaming)
+   * @param inviteCode - Optional custom invite code
    */
   const createInvite = useCallback(async (
-    campaignId: string,
+    batchPdaBase58: string,
+    monthlySalarySol: number = 0,
     inviteCode?: string
   ): Promise<{ signature: string; inviteCode: string }> => {
     if (!wallet) throw new Error('Wallet not connected');
 
-    const code = inviteCode || generateInviteCode();
-    const { campaignPda } = getCampaignPDAs(campaignId);
-    const { invitePda } = getInvitePDA(code);
-    const { SystemProgram } = await import('@solana/web3.js');
+    const { BN } = await import('@coral-xyz/anchor');
+    const { LAMPORTS_PER_SOL, SystemProgram, PublicKey } = await import('@solana/web3.js');
 
+    const code = inviteCode || generateInviteCode();
+    const { invitePda } = getInvitePDA(code);
+
+    // Parse the batch PDA
+    const batchPda = new PublicKey(batchPdaBase58);
+
+    // Convert monthly salary to lamports per second
+    const salaryRate = monthlySalarySol > 0
+      ? Math.floor((monthlySalarySol * LAMPORTS_PER_SOL) / (30 * 24 * 60 * 60))
+      : 0;
+
+    // Use createBatchInvite for payroll batches
     const signature = await program.methods
-      .createInvite(code)
+      .createBatchInvite(code, new BN(salaryRate))
       .accounts({
         owner: wallet.publicKey,
-        campaign: campaignPda,
+        batch: batchPda,
         invite: invitePda,
         systemProgram: SystemProgram.programId,
       })
@@ -293,7 +317,7 @@ export function useProgram() {
   }, [program, wallet, generateInviteCode]);
 
   /**
-   * Accept an invite and register stealth address
+   * Accept an invite and register stealth address (simple version, no streaming)
    */
   const acceptInvite = useCallback(async (
     inviteCode: string,
@@ -312,6 +336,56 @@ export function useProgram() {
         systemProgram: SystemProgram.programId,
       })
       .rpc();
+  }, [program, wallet]);
+
+  /**
+   * Accept invite AND automatically add to streaming payroll with privacy
+   *
+   * PRIVACY FLOW:
+   * 1. Employee generates a stealth keypair LOCALLY
+   * 2. Employee account is created with wallet = stealth pubkey
+   * 3. Employee keeps stealth PRIVATE KEY locally
+   * 4. To claim salary, employee signs with stealth keypair
+   *
+   * @param inviteCode - The invite code
+   * @param stealthMetaAddress - Stealth meta address for receiving payments
+   * @param stealthKeypair - The locally generated stealth keypair (PRIVATE KEY stays local!)
+   * @param batchIndex - The payroll batch index
+   */
+  const acceptInviteStreaming = useCallback(async (
+    inviteCode: string,
+    stealthMetaAddress: string,
+    stealthKeypair: Keypair,
+    batchIndex: number
+  ): Promise<{ signature: string; stealthKeypair: Keypair }> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { SystemProgram } = await import('@solana/web3.js');
+
+    const { invitePda } = getInvitePDA(inviteCode);
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+
+    // Get current employee count for PDA derivation
+    const batch = await (program.account as any).payrollBatch.fetch(batchPda);
+    const employeeCount = batch.employeeCount;
+
+    const { employeePda } = getEmployeePDA(batchPda, employeeCount);
+
+    const signature = await program.methods
+      .acceptInviteStreaming(stealthMetaAddress)
+      .accounts({
+        payer: wallet.publicKey,
+        employeeStealthPubkey: stealthKeypair.publicKey,
+        invite: invitePda,
+        masterVault: masterVaultPda,
+        batch: batchPda,
+        employee: employeePda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    return { signature, stealthKeypair };
   }, [program, wallet]);
 
   /**
@@ -454,6 +528,728 @@ export function useProgram() {
 
     return null;
   }, [checkIsEmployer, checkIsRecipient]);
+
+  // ============================================
+  // INDEX-BASED STREAMING PAYROLL OPERATIONS
+  // ============================================
+
+  /**
+   * Initialize the master vault (one-time setup)
+   */
+  const initMasterVault = useCallback(async (): Promise<string> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { SystemProgram } = await import('@solana/web3.js');
+
+    return program.methods
+      .initMasterVault()
+      .accounts({
+        authority: wallet.publicKey,
+        masterVault: masterVaultPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }, [program, wallet]);
+
+  /**
+   * Check if master vault is initialized
+   */
+  const isMasterVaultInitialized = useCallback(async (): Promise<boolean> => {
+    const { masterVaultPda } = getMasterVaultPDA();
+    try {
+      await (program.account as any).masterVault.fetch(masterVaultPda);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [program]);
+
+  /**
+   * Fetch master vault data
+   */
+  const fetchMasterVault = useCallback(async (): Promise<MasterVaultData | null> => {
+    const { masterVaultPda } = getMasterVaultPDA();
+    try {
+      const account = await (program.account as any).masterVault.fetch(masterVaultPda);
+      return {
+        authority: account.authority,
+        batchCount: account.batchCount,
+        totalEmployees: account.totalEmployees,
+        totalDeposited: account.totalDeposited.toNumber(),
+        totalPaid: account.totalPaid.toNumber(),
+        bump: account.bump,
+      };
+    } catch {
+      return null;
+    }
+  }, [program]);
+
+  /**
+   * Create a new payroll batch (index-based PDA)
+   */
+  const createBatch = useCallback(async (title: string): Promise<{ signature: string; batchIndex: number }> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { masterVaultPda } = getMasterVaultPDA();
+    const masterVault = await fetchMasterVault();
+    if (!masterVault) throw new Error('Master vault not initialized');
+
+    const batchIndex = masterVault.batchCount;
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+    const { batchVaultPda } = getBatchVaultPDA(batchPda);
+    const { SystemProgram } = await import('@solana/web3.js');
+
+    const signature = await program.methods
+      .createBatch(title)
+      .accounts({
+        owner: wallet.publicKey,
+        masterVault: masterVaultPda,
+        batch: batchPda,
+        batchVault: batchVaultPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    return { signature, batchIndex };
+  }, [program, wallet, fetchMasterVault]);
+
+  /**
+   * Fetch a batch by index
+   */
+  const fetchBatch = useCallback(async (index: number): Promise<PayrollBatchData | null> => {
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, index);
+
+    try {
+      const account = await (program.account as any).payrollBatch.fetch(batchPda);
+      const statusKey = Object.keys(account.status)[0];
+      const statusMap: Record<string, PayrollBatchData['status']> = {
+        active: 'Active',
+        paused: 'Paused',
+        closed: 'Closed',
+      };
+
+      return {
+        masterVault: account.masterVault,
+        owner: account.owner,
+        index: account.index,
+        title: account.title,
+        employeeCount: account.employeeCount,
+        totalBudget: account.totalBudget.toNumber(),
+        totalPaid: account.totalPaid.toNumber(),
+        createdAt: account.createdAt.toNumber(),
+        status: statusMap[statusKey] || 'Active',
+        vaultBump: account.vaultBump,
+        batchBump: account.batchBump,
+      };
+    } catch {
+      return null;
+    }
+  }, [program]);
+
+  /**
+   * List all batches owned by a wallet
+   */
+  const listMyBatches = useCallback(async (): Promise<PayrollBatchData[]> => {
+    if (!wallet) return [];
+
+    try {
+      const allBatches = await (program.account as any).payrollBatch.all();
+      const myBatches = allBatches.filter(
+        ({ account }: any) => account.owner.toBase58() === wallet.publicKey.toBase58()
+      );
+
+      return myBatches.map(({ account }: any) => {
+        const statusKey = Object.keys(account.status)[0];
+        const statusMap: Record<string, PayrollBatchData['status']> = {
+          active: 'Active',
+          paused: 'Paused',
+          closed: 'Closed',
+        };
+
+        return {
+          masterVault: account.masterVault,
+          owner: account.owner,
+          index: account.index,
+          title: account.title,
+          employeeCount: account.employeeCount,
+          totalBudget: account.totalBudget.toNumber(),
+          totalPaid: account.totalPaid.toNumber(),
+          createdAt: account.createdAt.toNumber(),
+          status: statusMap[statusKey] || 'Active',
+          vaultBump: account.vaultBump,
+          batchBump: account.batchBump,
+        };
+      });
+    } catch {
+      return [];
+    }
+  }, [program, wallet]);
+
+  /**
+   * Add an employee with streaming salary
+   */
+  const addEmployee = useCallback(async (
+    batchIndex: number,
+    employeeWallet: PublicKey,
+    stealthAddress: string,
+    salaryRate: number, // lamports per second
+  ): Promise<{ signature: string; employeeIndex: number }> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+    const batch = await fetchBatch(batchIndex);
+    if (!batch) throw new Error('Batch not found');
+
+    const employeeIndex = batch.employeeCount;
+    const { employeePda } = getEmployeePDA(batchPda, employeeIndex);
+    const { SystemProgram } = await import('@solana/web3.js');
+    const { BN } = await import('@coral-xyz/anchor');
+
+    const signature = await program.methods
+      .addEmployee(stealthAddress, new BN(salaryRate))
+      .accounts({
+        owner: wallet.publicKey,
+        masterVault: masterVaultPda,
+        batch: batchPda,
+        employeeWallet,
+        employee: employeePda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    return { signature, employeeIndex };
+  }, [program, wallet, fetchBatch]);
+
+  /**
+   * Fetch an employee
+   */
+  const fetchEmployee = useCallback(async (batchIndex: number, employeeIndex: number): Promise<EmployeeData | null> => {
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+    const { employeePda } = getEmployeePDA(batchPda, employeeIndex);
+
+    try {
+      const account = await (program.account as any).employee.fetch(employeePda);
+      const statusKey = Object.keys(account.status)[0];
+      const statusMap: Record<string, EmployeeData['status']> = {
+        active: 'Active',
+        paused: 'Paused',
+        terminated: 'Terminated',
+      };
+
+      const now = Math.floor(Date.now() / 1000);
+      const elapsed = now - account.lastClaimedAt.toNumber();
+      const accruedSalary = account.salaryRate.toNumber() * elapsed;
+      const monthlySalary = account.salaryRate.toNumber() * 30 * 24 * 60 * 60; // 30 days
+
+      return {
+        batch: account.batch,
+        wallet: account.wallet,
+        index: account.index,
+        stealthAddress: account.stealthAddress,
+        salaryRate: account.salaryRate.toNumber(),
+        startTime: account.startTime.toNumber(),
+        lastClaimedAt: account.lastClaimedAt.toNumber(),
+        totalClaimed: account.totalClaimed.toNumber(),
+        status: statusMap[statusKey] || 'Active',
+        bump: account.bump,
+        accruedSalary,
+        monthlySalary,
+      };
+    } catch {
+      return null;
+    }
+  }, [program]);
+
+  /**
+   * List all employees in a batch
+   */
+  const listBatchEmployees = useCallback(async (batchIndex: number): Promise<EmployeeData[]> => {
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+
+    try {
+      const allEmployees = await (program.account as any).employee.all();
+      const batchEmployees = allEmployees.filter(
+        ({ account }: any) => account.batch.toBase58() === batchPda.toBase58()
+      );
+
+      const now = Math.floor(Date.now() / 1000);
+
+      return batchEmployees.map(({ account }: any) => {
+        const statusKey = Object.keys(account.status)[0];
+        const statusMap: Record<string, EmployeeData['status']> = {
+          active: 'Active',
+          paused: 'Paused',
+          terminated: 'Terminated',
+        };
+
+        const elapsed = now - account.lastClaimedAt.toNumber();
+        const accruedSalary = account.salaryRate.toNumber() * elapsed;
+        const monthlySalary = account.salaryRate.toNumber() * 30 * 24 * 60 * 60;
+
+        return {
+          batch: account.batch,
+          wallet: account.wallet,
+          index: account.index,
+          stealthAddress: account.stealthAddress,
+          salaryRate: account.salaryRate.toNumber(),
+          startTime: account.startTime.toNumber(),
+          lastClaimedAt: account.lastClaimedAt.toNumber(),
+          totalClaimed: account.totalClaimed.toNumber(),
+          status: statusMap[statusKey] || 'Active',
+          bump: account.bump,
+          accruedSalary,
+          monthlySalary,
+        };
+      });
+    } catch {
+      return [];
+    }
+  }, [program]);
+
+  /**
+   * Fund a batch
+   */
+  const fundBatch = useCallback(async (batchIndex: number, amount: number): Promise<string> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+    const { batchVaultPda } = getBatchVaultPDA(batchPda);
+    const batch = await fetchBatch(batchIndex);
+    if (!batch) throw new Error('Batch not found');
+
+    const { SystemProgram } = await import('@solana/web3.js');
+    const { BN } = await import('@coral-xyz/anchor');
+
+    return program.methods
+      .fundBatch(new BN(amount))
+      .accounts({
+        funder: wallet.publicKey,
+        masterVault: masterVaultPda,
+        batch: batchPda,
+        batchVault: batchVaultPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }, [program, wallet, fetchBatch]);
+
+  /**
+   * Claim accrued salary (employee calls this)
+   */
+  const claimSalary = useCallback(async (batchIndex: number, employeeIndex: number): Promise<string> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+    const { batchVaultPda } = getBatchVaultPDA(batchPda);
+    const { employeePda } = getEmployeePDA(batchPda, employeeIndex);
+    const batch = await fetchBatch(batchIndex);
+    if (!batch) throw new Error('Batch not found');
+
+    const { SystemProgram } = await import('@solana/web3.js');
+
+    return program.methods
+      .claimSalary()
+      .accounts({
+        recipient: wallet.publicKey,
+        masterVault: masterVaultPda,
+        batch: batchPda,
+        batchVault: batchVaultPda,
+        employee: employeePda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }, [program, wallet, fetchBatch]);
+
+  /**
+   * Update employee salary rate
+   */
+  const updateSalaryRate = useCallback(async (
+    batchIndex: number,
+    employeeIndex: number,
+    newRate: number
+  ): Promise<string> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+    const { employeePda } = getEmployeePDA(batchPda, employeeIndex);
+    const { BN } = await import('@coral-xyz/anchor');
+
+    return program.methods
+      .updateSalaryRate(new BN(newRate))
+      .accounts({
+        owner: wallet.publicKey,
+        batch: batchPda,
+        employee: employeePda,
+      })
+      .rpc();
+  }, [program, wallet]);
+
+  /**
+   * Find employee record for current wallet
+   */
+  const findMyEmployeeRecord = useCallback(async (): Promise<{ batchIndex: number; employeeIndex: number; employee: EmployeeData } | null> => {
+    if (!wallet) return null;
+
+    try {
+      const allEmployees = await (program.account as any).employee.all();
+      const myEmployee = allEmployees.find(
+        ({ account }: any) => account.wallet.toBase58() === wallet.publicKey.toBase58()
+      );
+
+      if (!myEmployee) return null;
+
+      const account = myEmployee.account;
+      const statusKey = Object.keys(account.status)[0];
+      const statusMap: Record<string, EmployeeData['status']> = {
+        active: 'Active',
+        paused: 'Paused',
+        terminated: 'Terminated',
+      };
+
+      const now = Math.floor(Date.now() / 1000);
+      const elapsed = now - account.lastClaimedAt.toNumber();
+      const accruedSalary = account.salaryRate.toNumber() * elapsed;
+      const monthlySalary = account.salaryRate.toNumber() * 30 * 24 * 60 * 60;
+
+      // Find batch index from batch PDA
+      const masterVault = await fetchMasterVault();
+      if (!masterVault) return null;
+
+      const { masterVaultPda } = getMasterVaultPDA();
+      let batchIndex = -1;
+
+      for (let i = 0; i < masterVault.batchCount; i++) {
+        const { batchPda } = getBatchPDA(masterVaultPda, i);
+        if (batchPda.toBase58() === account.batch.toBase58()) {
+          batchIndex = i;
+          break;
+        }
+      }
+
+      if (batchIndex === -1) return null;
+
+      return {
+        batchIndex,
+        employeeIndex: account.index,
+        employee: {
+          batch: account.batch,
+          wallet: account.wallet,
+          index: account.index,
+          stealthAddress: account.stealthAddress,
+          salaryRate: account.salaryRate.toNumber(),
+          startTime: account.startTime.toNumber(),
+          lastClaimedAt: account.lastClaimedAt.toNumber(),
+          totalClaimed: account.totalClaimed.toNumber(),
+          status: statusMap[statusKey] || 'Active',
+          bump: account.bump,
+          accruedSalary,
+          monthlySalary,
+        },
+      };
+    } catch {
+      return null;
+    }
+  }, [program, wallet, fetchMasterVault]);
+
+  /**
+   * Find employee record by stealth pubkey
+   * Used when employee accepted invite with stealth keypair
+   */
+  const findEmployeeByStealthPubkey = useCallback(async (
+    stealthPubkey: PublicKey
+  ): Promise<{ batchIndex: number; employeeIndex: number; employee: EmployeeData } | null> => {
+    try {
+      const allEmployees = await (program.account as any).employee.all();
+      const myEmployee = allEmployees.find(
+        ({ account }: any) => account.wallet.toBase58() === stealthPubkey.toBase58()
+      );
+
+      if (!myEmployee) return null;
+
+      const account = myEmployee.account;
+      const statusKey = Object.keys(account.status)[0];
+      const statusMap: Record<string, EmployeeData['status']> = {
+        active: 'Active',
+        paused: 'Paused',
+        terminated: 'Terminated',
+      };
+
+      const now = Math.floor(Date.now() / 1000);
+      const elapsed = now - account.lastClaimedAt.toNumber();
+      const accruedSalary = account.salaryRate.toNumber() * elapsed;
+      const monthlySalary = account.salaryRate.toNumber() * 30 * 24 * 60 * 60;
+
+      // Find batch index from batch PDA
+      const masterVault = await fetchMasterVault();
+      if (!masterVault) return null;
+
+      const { masterVaultPda } = getMasterVaultPDA();
+      let batchIndex = -1;
+
+      for (let i = 0; i < masterVault.batchCount; i++) {
+        const { batchPda } = getBatchPDA(masterVaultPda, i);
+        if (batchPda.toBase58() === account.batch.toBase58()) {
+          batchIndex = i;
+          break;
+        }
+      }
+
+      if (batchIndex === -1) return null;
+
+      return {
+        batchIndex,
+        employeeIndex: account.index,
+        employee: {
+          batch: account.batch,
+          wallet: account.wallet,
+          index: account.index,
+          stealthAddress: account.stealthAddress,
+          salaryRate: account.salaryRate.toNumber(),
+          startTime: account.startTime.toNumber(),
+          lastClaimedAt: account.lastClaimedAt.toNumber(),
+          totalClaimed: account.totalClaimed.toNumber(),
+          status: statusMap[statusKey] || 'Active',
+          bump: account.bump,
+          accruedSalary,
+          monthlySalary,
+        },
+      };
+    } catch {
+      return null;
+    }
+  }, [program, fetchMasterVault]);
+
+  /**
+   * Claim accrued salary using stealth keypair
+   * PRIVACY: Uses stealth keypair as signer, not the main wallet
+   *
+   * @param batchIndex - Batch index
+   * @param employeeIndex - Employee index within batch
+   * @param stealthKeypair - The stealth keypair (private key stored locally)
+   */
+  const claimSalaryWithStealth = useCallback(async (
+    batchIndex: number,
+    employeeIndex: number,
+    stealthKeypair: Keypair
+  ): Promise<string> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+    const { batchVaultPda } = getBatchVaultPDA(batchPda);
+    const { employeePda } = getEmployeePDA(batchPda, employeeIndex);
+    const batch = await fetchBatch(batchIndex);
+    if (!batch) throw new Error('Batch not found');
+
+    // Debug logging
+    console.log('=== claimSalaryWithStealth DEBUG ===');
+    console.log('batchIndex:', batchIndex);
+    console.log('employeeIndex:', employeeIndex);
+    console.log('stealthKeypair.publicKey:', stealthKeypair.publicKey.toBase58());
+    console.log('masterVaultPda:', masterVaultPda.toBase58());
+    console.log('batchPda:', batchPda.toBase58());
+    console.log('batchVaultPda:', batchVaultPda.toBase58());
+    console.log('employeePda:', employeePda.toBase58());
+
+    // Fetch and log employee account to verify wallet matches
+    try {
+      const employeeAccount = await (program.account as any).employee.fetch(employeePda);
+      console.log('Employee wallet on-chain:', employeeAccount.wallet.toBase58());
+      console.log('Stealth pubkey matches:', employeeAccount.wallet.toBase58() === stealthKeypair.publicKey.toBase58());
+      console.log('Employee batch:', employeeAccount.batch.toBase58());
+      console.log('Batch matches:', employeeAccount.batch.toBase58() === batchPda.toBase58());
+    } catch (e) {
+      console.error('Failed to fetch employee account:', e);
+    }
+
+    const { SystemProgram } = await import('@solana/web3.js');
+
+    // Use stealth pubkey as recipient - the constraint is employee.wallet == recipient
+    return program.methods
+      .claimSalary()
+      .accounts({
+        recipient: stealthKeypair.publicKey,
+        masterVault: masterVaultPda,
+        batch: batchPda,
+        batchVault: batchVaultPda,
+        employee: employeePda,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([stealthKeypair])
+      .rpc();
+  }, [program, wallet, fetchBatch]);
+
+  // ============================================
+  // ANONYMOUS RECEIPTS OPERATIONS
+  // ============================================
+
+  /**
+   * Create an anonymous receipt after claiming salary
+   * Proves payment without revealing amount
+   *
+   * @returns The receipt secret - MUST BE STORED for later verification
+   */
+  const createReceipt = useCallback(async (
+    batchIndex: number,
+    employeeIndex: number
+  ): Promise<{ signature: string; secret: Uint8Array }> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { SystemProgram } = await import('@solana/web3.js');
+
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+    const { employeePda } = getEmployeePDA(batchPda, employeeIndex);
+
+    // Fetch employee to get totalClaimed and wallet (for PDA derivation)
+    const employee = await (program.account as any).employee.fetch(employeePda);
+    const totalClaimed = employee.totalClaimed.toNumber();
+    const employeeWallet = employee.wallet as PublicKey;
+
+    const secret = generateReceiptSecret();
+    // Use the employee's on-chain wallet (not connected wallet) for PDA
+    const { receiptPda } = getReceiptPDA(employeeWallet, batchPda, totalClaimed);
+
+    const signature = await program.methods
+      .createReceipt(Array.from(secret))
+      .accounts({
+        employeeSigner: wallet.publicKey,
+        employee: employeePda,
+        batch: batchPda,
+        receipt: receiptPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    return { signature, secret };
+  }, [program, wallet]);
+
+  /**
+   * Create an anonymous receipt using stealth keypair (for stealth mode employees)
+   */
+  const createReceiptWithStealth = useCallback(async (
+    batchIndex: number,
+    employeeIndex: number,
+    stealthKeypair: Keypair
+  ): Promise<{ signature: string; secret: Uint8Array }> => {
+    const { SystemProgram, Transaction } = await import('@solana/web3.js');
+
+    const { masterVaultPda } = getMasterVaultPDA();
+    const { batchPda } = getBatchPDA(masterVaultPda, batchIndex);
+    const { employeePda } = getEmployeePDA(batchPda, employeeIndex);
+
+    // Fetch employee to get totalClaimed
+    const employee = await (program.account as any).employee.fetch(employeePda);
+    const totalClaimed = employee.totalClaimed.toNumber();
+
+    const secret = generateReceiptSecret();
+    // Use the stealth keypair's public key for PDA (matches employee.wallet)
+    const { receiptPda } = getReceiptPDA(stealthKeypair.publicKey, batchPda, totalClaimed);
+
+    // Build transaction manually since we need to sign with stealth keypair
+    const ix = await program.methods
+      .createReceipt(Array.from(secret))
+      .accounts({
+        employeeSigner: stealthKeypair.publicKey,
+        employee: employeePda,
+        batch: batchPda,
+        receipt: receiptPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    const tx = new Transaction({
+      blockhash,
+      lastValidBlockHeight,
+      feePayer: stealthKeypair.publicKey,
+    });
+    tx.add(ix);
+    tx.sign(stealthKeypair);
+
+    const signature = await connection.sendRawTransaction(tx.serialize());
+    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight });
+
+    return { signature, secret };
+  }, [program, connection]);
+
+  /**
+   * List all my payment receipts
+   * @param employeeWallet - Optional wallet to filter by (for stealth mode). Defaults to connected wallet.
+   */
+  const listMyReceipts = useCallback(async (employeeWallet?: PublicKey): Promise<{
+    pubkey: PublicKey;
+    receipt: {
+      employee: PublicKey;
+      batch: PublicKey;
+      employer: PublicKey;
+      commitment: Uint8Array;
+      timestamp: number;
+      receiptIndex: number;
+    };
+  }[]> => {
+    const filterWallet = employeeWallet || wallet?.publicKey;
+    if (!filterWallet) return [];
+
+    try {
+      const accounts = await (program.account as any).paymentReceipt.all([
+        {
+          memcmp: {
+            offset: 8, // After discriminator
+            bytes: filterWallet.toBase58(),
+          },
+        },
+      ]);
+
+      return accounts.map(({ publicKey, account }: any) => ({
+        pubkey: publicKey,
+        receipt: {
+          employee: account.employee,
+          batch: account.batch,
+          employer: account.employer,
+          commitment: new Uint8Array(account.commitment),
+          timestamp: account.timestamp.toNumber(),
+          receiptIndex: account.receiptIndex.toNumber(),
+        },
+      }));
+    } catch (e) {
+      console.error('Failed to list receipts:', e);
+      return [];
+    }
+  }, [program, wallet]);
+
+  /**
+   * Verify a receipt (blind - does not reveal amount)
+   * Proves employee received payment from batch
+   */
+  const verifyReceiptBlind = useCallback(async (
+    receiptPda: PublicKey,
+    employeeWallet: PublicKey
+  ): Promise<string> => {
+    if (!wallet) throw new Error('Wallet not connected');
+
+    const { BN } = await import('@coral-xyz/anchor');
+    const now = Math.floor(Date.now() / 1000);
+
+    return program.methods
+      .verifyReceiptBlind(
+        employeeWallet,
+        new BN(now - 86400 * 365), // 1 year ago
+        new BN(now)
+      )
+      .accounts({
+        verifier: wallet.publicKey,
+        receipt: receiptPda,
+      })
+      .rpc();
+  }, [program, wallet]);
 
   // ============================================
   // PRIVACY POOL OPERATIONS
@@ -1214,6 +2010,7 @@ export function useProgram() {
     generateInviteCode,
     createInvite,
     acceptInvite,
+    acceptInviteStreaming,
     revokeInvite,
     fetchInvite,
     listInvitesByBatch,
@@ -1223,6 +2020,29 @@ export function useProgram() {
     checkIsRecipient,
     determineRole,
 
+    // Streaming Payroll operations
+    initMasterVault,
+    isMasterVaultInitialized,
+    fetchMasterVault,
+    createBatch,
+    fetchBatch,
+    listMyBatches,
+    addEmployee,
+    fetchEmployee,
+    listBatchEmployees,
+    fundBatch,
+    claimSalary,
+    claimSalaryWithStealth,
+    updateSalaryRate,
+    findMyEmployeeRecord,
+    findEmployeeByStealthPubkey,
+
+    // Anonymous Receipts operations
+    createReceipt,
+    createReceiptWithStealth,
+    listMyReceipts,
+    verifyReceiptBlind,
+
     // Helpers
     getCampaignPDAs,
     getStealthRegistryPDA,
@@ -1230,6 +2050,10 @@ export function useProgram() {
     getPendingWithdrawPDA,
     getChurnVaultPDAs,
     getInvitePDA,
+    getMasterVaultPDA,
+    getBatchPDA,
+    getBatchVaultPDA,
+    getEmployeePDA,
   };
 }
 
@@ -1281,6 +2105,8 @@ function parseStealthRegistryAccount(account: any): StealthRegistryData {
 }
 
 function parseInviteAccount(account: any): InviteData {
+  const { LAMPORTS_PER_SOL } = require('@solana/web3.js');
+
   const statusMap: Record<string, 'Pending' | 'Accepted' | 'Revoked'> = {
     pending: 'Pending',
     accepted: 'Accepted',
@@ -1288,6 +2114,7 @@ function parseInviteAccount(account: any): InviteData {
   };
 
   const statusKey = Object.keys(account.status)[0];
+  const salaryRate = account.salaryRate?.toNumber?.() ?? 0;
 
   return {
     batch: account.batch,
@@ -1295,9 +2122,11 @@ function parseInviteAccount(account: any): InviteData {
     creator: account.creator,
     recipient: account.recipient,
     recipientStealthAddress: account.recipientStealthAddress,
+    salaryRate,
     status: statusMap[statusKey] || 'Pending',
     createdAt: account.createdAt.toNumber(),
     acceptedAt: account.acceptedAt.toNumber(),
     bump: account.bump,
+    monthlySalary: salaryRate > 0 ? (salaryRate * 30 * 24 * 60 * 60) / LAMPORTS_PER_SOL : 0,
   };
 }

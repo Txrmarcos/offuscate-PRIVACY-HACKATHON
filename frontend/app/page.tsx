@@ -52,19 +52,19 @@ export default function Home() {
   const handleCompanyClick = () => {
     if (connected) {
       setRole('employer');
-      router.push('/explore');
+      router.push('/mixer');
     } else {
       setPendingCompanyRedirect(true);
       setVisible(true);
     }
   };
 
-  // Redirect to explore after connecting (if company button was clicked)
+  // Redirect to Treasury after connecting (if company button was clicked)
   useEffect(() => {
     if (connected && pendingCompanyRedirect) {
       setPendingCompanyRedirect(false);
       setRole('employer');
-      router.push('/explore');
+      router.push('/mixer');
     }
   }, [connected, pendingCompanyRedirect, router, setRole]);
 

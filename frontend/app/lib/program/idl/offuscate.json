@@ -66,6 +66,226 @@
       ]
     },
     {
+      "name": "accept_invite_streaming",
+      "docs": [
+        "Accept invite AND automatically add to streaming payroll",
+        "",
+        "PRIVACY FLOW:",
+        "1. Employee generates a stealth keypair LOCALLY (not their main wallet)",
+        "2. Passes the stealth PUBLIC KEY as employee_stealth_pubkey",
+        "3. Employee account is created with wallet = stealth pubkey",
+        "4. Employee keeps stealth PRIVATE KEY locally",
+        "5. To claim salary, employee signs with stealth keypair",
+        "",
+        "Result: On-chain shows \"stealth ABC receives payment\"",
+        "No one knows stealth ABC belongs to which real person"
+      ],
+      "discriminator": [
+        186,
+        69,
+        117,
+        202,
+        8,
+        231,
+        192,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for the transaction (can be main wallet or relayer)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "employee_stealth_pubkey",
+          "docs": [
+            "The stealth public key that will own the Employee account",
+            "This is generated locally by the employee, NOT their main wallet"
+          ]
+        },
+        {
+          "name": "invite",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  105,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "invite.invite_code",
+                "account": "Invite"
+              }
+            ]
+          }
+        },
+        {
+          "name": "master_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  115,
+                  116,
+                  101,
+                  114,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch",
+          "docs": [
+            "The batch this invite belongs to (via invite.batch -> campaign)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "employee",
+          "docs": [
+            "The new employee account (created with stealth pubkey)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  109,
+                  112,
+                  108,
+                  111,
+                  121,
+                  101,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch"
+              },
+              {
+                "kind": "account",
+                "path": "batch.employee_count",
+                "account": "PayrollBatch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "stealth_meta_address",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "add_employee",
+      "docs": [
+        "Add an employee to a batch with streaming salary"
+      ],
+      "discriminator": [
+        14,
+        82,
+        239,
+        156,
+        50,
+        90,
+        189,
+        61
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "master_vault",
+          "writable": true
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "employee_wallet"
+        },
+        {
+          "name": "employee",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  109,
+                  112,
+                  108,
+                  111,
+                  121,
+                  101,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch"
+              },
+              {
+                "kind": "account",
+                "path": "batch.employee_count",
+                "account": "PayrollBatch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "stealth_address",
+          "type": "string"
+        },
+        {
+          "name": "salary_rate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "batch_claim_withdraw",
       "docs": [
         "BATCH CLAIM WITHDRAWALS",
@@ -139,6 +359,74 @@
               }
             ]
           }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_salary",
+      "docs": [
+        "Employee claims accrued salary (streaming)"
+      ],
+      "discriminator": [
+        253,
+        112,
+        47,
+        40,
+        140,
+        213,
+        22,
+        141
+      ],
+      "accounts": [
+        {
+          "name": "recipient",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "master_vault",
+          "writable": true
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "batch_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "employee",
+          "writable": true
         },
         {
           "name": "system_program",
@@ -435,6 +723,211 @@
       "args": []
     },
     {
+      "name": "create_batch",
+      "docs": [
+        "Create a new payroll batch (index-based PDA)"
+      ],
+      "discriminator": [
+        159,
+        198,
+        248,
+        43,
+        248,
+        31,
+        235,
+        86
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "master_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  115,
+                  116,
+                  101,
+                  114,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "master_vault"
+              },
+              {
+                "kind": "account",
+                "path": "master_vault.batch_count",
+                "account": "MasterVault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "title",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "create_batch_invite",
+      "docs": [
+        "Create an invite for a recipient to join a payroll batch (using PayrollBatch)",
+        "Only the batch owner can create invites",
+        "salary_rate: lamports per second (0 = no streaming, just invite)"
+      ],
+      "discriminator": [
+        205,
+        243,
+        110,
+        27,
+        187,
+        67,
+        179,
+        80
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "batch"
+          ]
+        },
+        {
+          "name": "batch",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch.master_vault",
+                "account": "PayrollBatch"
+              },
+              {
+                "kind": "account",
+                "path": "batch.index",
+                "account": "PayrollBatch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "invite",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  105,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "invite_code"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "invite_code",
+          "type": "string"
+        },
+        {
+          "name": "salary_rate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "create_campaign",
       "docs": [
         "Create a new campaign with a vault PDA",
@@ -535,7 +1028,8 @@
       "name": "create_invite",
       "docs": [
         "Create an invite for a recipient to join a payroll batch",
-        "Only the batch owner can create invites"
+        "Only the batch owner can create invites",
+        "salary_rate: lamports per second (0 = no streaming, just invite)"
       ],
       "discriminator": [
         160,
@@ -613,6 +1107,89 @@
         {
           "name": "invite_code",
           "type": "string"
+        },
+        {
+          "name": "salary_rate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_receipt",
+      "docs": [
+        "Create an anonymous receipt when claiming salary",
+        "Called after claim_salary to create a verifiable proof of payment"
+      ],
+      "discriminator": [
+        187,
+        57,
+        104,
+        13,
+        15,
+        1,
+        219,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "employee_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "employee"
+        },
+        {
+          "name": "batch"
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "employee.wallet",
+                "account": "Employee"
+              },
+              {
+                "kind": "account",
+                "path": "batch"
+              },
+              {
+                "kind": "account",
+                "path": "employee.total_claimed",
+                "account": "Employee"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "receipt_secret",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -684,6 +1261,75 @@
                 "kind": "account",
                 "path": "campaign.campaign_id",
                 "account": "Campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "fund_batch",
+      "docs": [
+        "Fund a batch's vault"
+      ],
+      "discriminator": [
+        177,
+        109,
+        157,
+        28,
+        93,
+        74,
+        138,
+        48
+      ],
+      "accounts": [
+        {
+          "name": "funder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "master_vault",
+          "writable": true
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "batch_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch"
               }
             ]
           }
@@ -880,6 +1526,59 @@
           "type": "u8"
         }
       ]
+    },
+    {
+      "name": "init_master_vault",
+      "docs": [
+        "Initialize the global master vault (one-time setup)"
+      ],
+      "discriminator": [
+        30,
+        213,
+        201,
+        63,
+        95,
+        25,
+        93,
+        24
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "master_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  115,
+                  116,
+                  101,
+                  114,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "init_privacy_pool",
@@ -2086,6 +2785,46 @@
       "args": []
     },
     {
+      "name": "set_employee_status",
+      "docs": [
+        "Pause/Resume employee streaming"
+      ],
+      "discriminator": [
+        57,
+        44,
+        4,
+        73,
+        30,
+        22,
+        51,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "batch"
+        },
+        {
+          "name": "employee",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_status",
+          "type": {
+            "defined": {
+              "name": "EmployeeStatus"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "set_stealth_meta_address",
       "docs": [
         "Set stealth meta-address for a campaign",
@@ -2141,6 +2880,149 @@
         {
           "name": "stealth_meta_address",
           "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "update_salary_rate",
+      "docs": [
+        "Update employee salary rate"
+      ],
+      "discriminator": [
+        159,
+        147,
+        22,
+        205,
+        193,
+        49,
+        98,
+        88
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "batch"
+        },
+        {
+          "name": "employee",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_rate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "verify_receipt",
+      "docs": [
+        "Verify an anonymous receipt",
+        "Anyone can call this to verify that a receipt is valid",
+        "The verifier provides all data EXCEPT the amount",
+        "If the commitment matches, the receipt is valid"
+      ],
+      "discriminator": [
+        202,
+        144,
+        21,
+        149,
+        181,
+        189,
+        23,
+        170
+      ],
+      "accounts": [
+        {
+          "name": "verifier",
+          "docs": [
+            "Anyone can verify a receipt"
+          ],
+          "signer": true
+        },
+        {
+          "name": "receipt",
+          "docs": [
+            "The receipt to verify"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "employee_wallet",
+          "type": "pubkey"
+        },
+        {
+          "name": "batch_key",
+          "type": "pubkey"
+        },
+        {
+          "name": "timestamp",
+          "type": "i64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "secret",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "verify_receipt_blind",
+      "docs": [
+        "Generate a blind receipt (for third-party verification without amount)",
+        "The employee provides a ZK-like proof without revealing amount"
+      ],
+      "discriminator": [
+        161,
+        203,
+        21,
+        236,
+        32,
+        44,
+        67,
+        137
+      ],
+      "accounts": [
+        {
+          "name": "verifier",
+          "docs": [
+            "Anyone can do blind verification"
+          ],
+          "signer": true
+        },
+        {
+          "name": "receipt",
+          "docs": [
+            "The receipt to verify (blind)"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "employee_wallet",
+          "type": "pubkey"
+        },
+        {
+          "name": "_timestamp_range_start",
+          "type": "i64"
+        },
+        {
+          "name": "_timestamp_range_end",
+          "type": "i64"
         }
       ]
     },
@@ -2271,6 +3153,19 @@
       ]
     },
     {
+      "name": "Employee",
+      "discriminator": [
+        98,
+        238,
+        61,
+        252,
+        130,
+        77,
+        105,
+        67
+      ]
+    },
+    {
       "name": "Invite",
       "discriminator": [
         230,
@@ -2284,6 +3179,19 @@
       ]
     },
     {
+      "name": "MasterVault",
+      "discriminator": [
+        192,
+        121,
+        86,
+        115,
+        189,
+        157,
+        113,
+        1
+      ]
+    },
+    {
       "name": "NullifierPDA",
       "discriminator": [
         42,
@@ -2294,6 +3202,32 @@
         39,
         74,
         88
+      ]
+    },
+    {
+      "name": "PaymentReceipt",
+      "discriminator": [
+        168,
+        198,
+        209,
+        4,
+        60,
+        235,
+        126,
+        109
+      ]
+    },
+    {
+      "name": "PayrollBatch",
+      "discriminator": [
+        163,
+        228,
+        23,
+        27,
+        184,
+        54,
+        182,
+        104
       ]
     },
     {
@@ -2506,9 +3440,76 @@
       "code": 6033,
       "name": "InviteNotFound",
       "msg": "Invite not found"
+    },
+    {
+      "code": 6034,
+      "name": "InviteNoSalaryConfigured",
+      "msg": "Invite has no salary configured - use accept_invite instead"
+    },
+    {
+      "code": 6035,
+      "name": "EmployeeNotActive",
+      "msg": "Employee not active"
+    },
+    {
+      "code": 6036,
+      "name": "NoSalaryToClaim",
+      "msg": "No salary to claim"
+    },
+    {
+      "code": 6037,
+      "name": "InvalidSalaryRate",
+      "msg": "Invalid salary rate"
+    },
+    {
+      "code": 6038,
+      "name": "EmployeeAlreadyExists",
+      "msg": "Employee already exists"
+    },
+    {
+      "code": 6039,
+      "name": "InvalidReceiptProof",
+      "msg": "Invalid receipt proof - commitment does not match"
+    },
+    {
+      "code": 6040,
+      "name": "ReceiptEmployeeMismatch",
+      "msg": "Receipt employee does not match provided employee"
+    },
+    {
+      "code": 6041,
+      "name": "ReceiptBatchMismatch",
+      "msg": "Receipt batch does not match provided batch"
+    },
+    {
+      "code": 6042,
+      "name": "ReceiptTimestampMismatch",
+      "msg": "Receipt timestamp does not match provided timestamp"
+    },
+    {
+      "code": 6043,
+      "name": "ReceiptNotFound",
+      "msg": "Receipt not found"
     }
   ],
   "types": [
+    {
+      "name": "BatchStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Active"
+          },
+          {
+            "name": "Paused"
+          },
+          {
+            "name": "Closed"
+          }
+        ]
+      }
+    },
     {
       "name": "Campaign",
       "type": {
@@ -2669,6 +3670,79 @@
       }
     },
     {
+      "name": "Employee",
+      "docs": [
+        "Employee - Index-based PDA with streaming salary",
+        "Seeds: [\"employee\", batch, index]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          },
+          {
+            "name": "stealth_address",
+            "type": "string"
+          },
+          {
+            "name": "salary_rate",
+            "type": "u64"
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "last_claimed_at",
+            "type": "i64"
+          },
+          {
+            "name": "total_claimed",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "EmployeeStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EmployeeStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Active"
+          },
+          {
+            "name": "Paused"
+          },
+          {
+            "name": "Terminated"
+          }
+        ]
+      }
+    },
+    {
       "name": "Invite",
       "docs": [
         "Invite account - stores invitation for a recipient to join a payroll batch"
@@ -2695,6 +3769,10 @@
           {
             "name": "recipient_stealth_address",
             "type": "string"
+          },
+          {
+            "name": "salary_rate",
+            "type": "u64"
           },
           {
             "name": "status",
@@ -2737,6 +3815,42 @@
       }
     },
     {
+      "name": "MasterVault",
+      "docs": [
+        "Master Vault - Global singleton that tracks all indices",
+        "This hides organizational relationships by using sequential indices"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "batch_count",
+            "type": "u32"
+          },
+          {
+            "name": "total_employees",
+            "type": "u32"
+          },
+          {
+            "name": "total_deposited",
+            "type": "u64"
+          },
+          {
+            "name": "total_paid",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "NullifierPDA",
       "docs": [
         "Individual PDA for each used nullifier",
@@ -2761,6 +3875,122 @@
           },
           {
             "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentReceipt",
+      "docs": [
+        "Anonymous Payment Receipt",
+        "Proves payment was received without revealing the amount",
+        "",
+        "Privacy Model:",
+        "- commitment = hash(employee || batch || timestamp || amount || secret)",
+        "- The employee keeps the secret",
+        "- To prove payment: reveal (employee, batch, timestamp) + show receipt exists",
+        "- To prove specific amount: reveal secret (optional, for full audits)",
+        "",
+        "Use cases:",
+        "- Bank: \"Prove you have income\" → Show receipt, proves employment",
+        "- Visa: \"Prove you're employed\" → Show receipt from recent date",
+        "- Audit: \"Prove specific amount\" → Reveal secret for full verification"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "employee",
+            "type": "pubkey"
+          },
+          {
+            "name": "batch",
+            "type": "pubkey"
+          },
+          {
+            "name": "employer",
+            "type": "pubkey"
+          },
+          {
+            "name": "commitment",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "receipt_index",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PayrollBatch",
+      "docs": [
+        "PayrollBatch - Index-based PDA (no pubkey or name in seeds)",
+        "Seeds: [\"batch\", master_vault, index]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "master_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          },
+          {
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "name": "employee_count",
+            "type": "u32"
+          },
+          {
+            "name": "total_budget",
+            "type": "u64"
+          },
+          {
+            "name": "total_paid",
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "BatchStatus"
+              }
+            }
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          },
+          {
+            "name": "batch_bump",
             "type": "u8"
           }
         ]

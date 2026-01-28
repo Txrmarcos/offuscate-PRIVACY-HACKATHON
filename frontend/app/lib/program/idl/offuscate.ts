@@ -72,6 +72,226 @@ export type Offuscate = {
       ]
     },
     {
+      "name": "acceptInviteStreaming",
+      "docs": [
+        "Accept invite AND automatically add to streaming payroll",
+        "",
+        "PRIVACY FLOW:",
+        "1. Employee generates a stealth keypair LOCALLY (not their main wallet)",
+        "2. Passes the stealth PUBLIC KEY as employee_stealth_pubkey",
+        "3. Employee account is created with wallet = stealth pubkey",
+        "4. Employee keeps stealth PRIVATE KEY locally",
+        "5. To claim salary, employee signs with stealth keypair",
+        "",
+        "Result: On-chain shows \"stealth ABC receives payment\"",
+        "No one knows stealth ABC belongs to which real person"
+      ],
+      "discriminator": [
+        186,
+        69,
+        117,
+        202,
+        8,
+        231,
+        192,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for the transaction (can be main wallet or relayer)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "employeeStealthPubkey",
+          "docs": [
+            "The stealth public key that will own the Employee account",
+            "This is generated locally by the employee, NOT their main wallet"
+          ]
+        },
+        {
+          "name": "invite",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  105,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "invite.invite_code",
+                "account": "invite"
+              }
+            ]
+          }
+        },
+        {
+          "name": "masterVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  115,
+                  116,
+                  101,
+                  114,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch",
+          "docs": [
+            "The batch this invite belongs to (via invite.batch -> campaign)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "employee",
+          "docs": [
+            "The new employee account (created with stealth pubkey)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  109,
+                  112,
+                  108,
+                  111,
+                  121,
+                  101,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch"
+              },
+              {
+                "kind": "account",
+                "path": "batch.employee_count",
+                "account": "payrollBatch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "stealthMetaAddress",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "addEmployee",
+      "docs": [
+        "Add an employee to a batch with streaming salary"
+      ],
+      "discriminator": [
+        14,
+        82,
+        239,
+        156,
+        50,
+        90,
+        189,
+        61
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "masterVault",
+          "writable": true
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "employeeWallet"
+        },
+        {
+          "name": "employee",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  109,
+                  112,
+                  108,
+                  111,
+                  121,
+                  101,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch"
+              },
+              {
+                "kind": "account",
+                "path": "batch.employee_count",
+                "account": "payrollBatch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "stealthAddress",
+          "type": "string"
+        },
+        {
+          "name": "salaryRate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "batchClaimWithdraw",
       "docs": [
         "BATCH CLAIM WITHDRAWALS",
@@ -145,6 +365,74 @@ export type Offuscate = {
               }
             ]
           }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claimSalary",
+      "docs": [
+        "Employee claims accrued salary (streaming)"
+      ],
+      "discriminator": [
+        253,
+        112,
+        47,
+        40,
+        140,
+        213,
+        22,
+        141
+      ],
+      "accounts": [
+        {
+          "name": "recipient",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "masterVault",
+          "writable": true
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "batchVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "employee",
+          "writable": true
         },
         {
           "name": "systemProgram",
@@ -441,6 +729,211 @@ export type Offuscate = {
       "args": []
     },
     {
+      "name": "createBatch",
+      "docs": [
+        "Create a new payroll batch (index-based PDA)"
+      ],
+      "discriminator": [
+        159,
+        198,
+        248,
+        43,
+        248,
+        31,
+        235,
+        86
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "masterVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  115,
+                  116,
+                  101,
+                  114,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "batch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "masterVault"
+              },
+              {
+                "kind": "account",
+                "path": "master_vault.batch_count",
+                "account": "masterVault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "batchVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "title",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "createBatchInvite",
+      "docs": [
+        "Create an invite for a recipient to join a payroll batch (using PayrollBatch)",
+        "Only the batch owner can create invites",
+        "salary_rate: lamports per second (0 = no streaming, just invite)"
+      ],
+      "discriminator": [
+        205,
+        243,
+        110,
+        27,
+        187,
+        67,
+        179,
+        80
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "batch"
+          ]
+        },
+        {
+          "name": "batch",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch.master_vault",
+                "account": "payrollBatch"
+              },
+              {
+                "kind": "account",
+                "path": "batch.index",
+                "account": "payrollBatch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "invite",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  105,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "inviteCode"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "inviteCode",
+          "type": "string"
+        },
+        {
+          "name": "salaryRate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "createCampaign",
       "docs": [
         "Create a new campaign with a vault PDA",
@@ -541,7 +1034,8 @@ export type Offuscate = {
       "name": "createInvite",
       "docs": [
         "Create an invite for a recipient to join a payroll batch",
-        "Only the batch owner can create invites"
+        "Only the batch owner can create invites",
+        "salary_rate: lamports per second (0 = no streaming, just invite)"
       ],
       "discriminator": [
         160,
@@ -619,6 +1113,89 @@ export type Offuscate = {
         {
           "name": "inviteCode",
           "type": "string"
+        },
+        {
+          "name": "salaryRate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "createReceipt",
+      "docs": [
+        "Create an anonymous receipt when claiming salary",
+        "Called after claim_salary to create a verifiable proof of payment"
+      ],
+      "discriminator": [
+        187,
+        57,
+        104,
+        13,
+        15,
+        1,
+        219,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "employeeSigner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "employee"
+        },
+        {
+          "name": "batch"
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "employee.wallet",
+                "account": "employee"
+              },
+              {
+                "kind": "account",
+                "path": "batch"
+              },
+              {
+                "kind": "account",
+                "path": "employee.total_claimed",
+                "account": "employee"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "receiptSecret",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -690,6 +1267,75 @@ export type Offuscate = {
                 "kind": "account",
                 "path": "campaign.campaign_id",
                 "account": "campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "fundBatch",
+      "docs": [
+        "Fund a batch's vault"
+      ],
+      "discriminator": [
+        177,
+        109,
+        157,
+        28,
+        93,
+        74,
+        138,
+        48
+      ],
+      "accounts": [
+        {
+          "name": "funder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "masterVault",
+          "writable": true
+        },
+        {
+          "name": "batch",
+          "writable": true
+        },
+        {
+          "name": "batchVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "batch"
               }
             ]
           }
@@ -886,6 +1532,59 @@ export type Offuscate = {
           "type": "u8"
         }
       ]
+    },
+    {
+      "name": "initMasterVault",
+      "docs": [
+        "Initialize the global master vault (one-time setup)"
+      ],
+      "discriminator": [
+        30,
+        213,
+        201,
+        63,
+        95,
+        25,
+        93,
+        24
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "masterVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  115,
+                  116,
+                  101,
+                  114,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "initPrivacyPool",
@@ -2092,6 +2791,46 @@ export type Offuscate = {
       "args": []
     },
     {
+      "name": "setEmployeeStatus",
+      "docs": [
+        "Pause/Resume employee streaming"
+      ],
+      "discriminator": [
+        57,
+        44,
+        4,
+        73,
+        30,
+        22,
+        51,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "batch"
+        },
+        {
+          "name": "employee",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "newStatus",
+          "type": {
+            "defined": {
+              "name": "employeeStatus"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "setStealthMetaAddress",
       "docs": [
         "Set stealth meta-address for a campaign",
@@ -2147,6 +2886,149 @@ export type Offuscate = {
         {
           "name": "stealthMetaAddress",
           "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "updateSalaryRate",
+      "docs": [
+        "Update employee salary rate"
+      ],
+      "discriminator": [
+        159,
+        147,
+        22,
+        205,
+        193,
+        49,
+        98,
+        88
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "batch"
+        },
+        {
+          "name": "employee",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "newRate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "verifyReceipt",
+      "docs": [
+        "Verify an anonymous receipt",
+        "Anyone can call this to verify that a receipt is valid",
+        "The verifier provides all data EXCEPT the amount",
+        "If the commitment matches, the receipt is valid"
+      ],
+      "discriminator": [
+        202,
+        144,
+        21,
+        149,
+        181,
+        189,
+        23,
+        170
+      ],
+      "accounts": [
+        {
+          "name": "verifier",
+          "docs": [
+            "Anyone can verify a receipt"
+          ],
+          "signer": true
+        },
+        {
+          "name": "receipt",
+          "docs": [
+            "The receipt to verify"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "employeeWallet",
+          "type": "pubkey"
+        },
+        {
+          "name": "batchKey",
+          "type": "pubkey"
+        },
+        {
+          "name": "timestamp",
+          "type": "i64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "secret",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "verifyReceiptBlind",
+      "docs": [
+        "Generate a blind receipt (for third-party verification without amount)",
+        "The employee provides a ZK-like proof without revealing amount"
+      ],
+      "discriminator": [
+        161,
+        203,
+        21,
+        236,
+        32,
+        44,
+        67,
+        137
+      ],
+      "accounts": [
+        {
+          "name": "verifier",
+          "docs": [
+            "Anyone can do blind verification"
+          ],
+          "signer": true
+        },
+        {
+          "name": "receipt",
+          "docs": [
+            "The receipt to verify (blind)"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "employeeWallet",
+          "type": "pubkey"
+        },
+        {
+          "name": "timestampRangeStart",
+          "type": "i64"
+        },
+        {
+          "name": "timestampRangeEnd",
+          "type": "i64"
         }
       ]
     },
@@ -2277,6 +3159,19 @@ export type Offuscate = {
       ]
     },
     {
+      "name": "employee",
+      "discriminator": [
+        98,
+        238,
+        61,
+        252,
+        130,
+        77,
+        105,
+        67
+      ]
+    },
+    {
       "name": "invite",
       "discriminator": [
         230,
@@ -2290,6 +3185,19 @@ export type Offuscate = {
       ]
     },
     {
+      "name": "masterVault",
+      "discriminator": [
+        192,
+        121,
+        86,
+        115,
+        189,
+        157,
+        113,
+        1
+      ]
+    },
+    {
       "name": "nullifierPda",
       "discriminator": [
         42,
@@ -2300,6 +3208,32 @@ export type Offuscate = {
         39,
         74,
         88
+      ]
+    },
+    {
+      "name": "paymentReceipt",
+      "discriminator": [
+        168,
+        198,
+        209,
+        4,
+        60,
+        235,
+        126,
+        109
+      ]
+    },
+    {
+      "name": "payrollBatch",
+      "discriminator": [
+        163,
+        228,
+        23,
+        27,
+        184,
+        54,
+        182,
+        104
       ]
     },
     {
@@ -2512,9 +3446,76 @@ export type Offuscate = {
       "code": 6033,
       "name": "inviteNotFound",
       "msg": "Invite not found"
+    },
+    {
+      "code": 6034,
+      "name": "inviteNoSalaryConfigured",
+      "msg": "Invite has no salary configured - use accept_invite instead"
+    },
+    {
+      "code": 6035,
+      "name": "employeeNotActive",
+      "msg": "Employee not active"
+    },
+    {
+      "code": 6036,
+      "name": "noSalaryToClaim",
+      "msg": "No salary to claim"
+    },
+    {
+      "code": 6037,
+      "name": "invalidSalaryRate",
+      "msg": "Invalid salary rate"
+    },
+    {
+      "code": 6038,
+      "name": "employeeAlreadyExists",
+      "msg": "Employee already exists"
+    },
+    {
+      "code": 6039,
+      "name": "invalidReceiptProof",
+      "msg": "Invalid receipt proof - commitment does not match"
+    },
+    {
+      "code": 6040,
+      "name": "receiptEmployeeMismatch",
+      "msg": "Receipt employee does not match provided employee"
+    },
+    {
+      "code": 6041,
+      "name": "receiptBatchMismatch",
+      "msg": "Receipt batch does not match provided batch"
+    },
+    {
+      "code": 6042,
+      "name": "receiptTimestampMismatch",
+      "msg": "Receipt timestamp does not match provided timestamp"
+    },
+    {
+      "code": 6043,
+      "name": "receiptNotFound",
+      "msg": "Receipt not found"
     }
   ],
   "types": [
+    {
+      "name": "batchStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "active"
+          },
+          {
+            "name": "paused"
+          },
+          {
+            "name": "closed"
+          }
+        ]
+      }
+    },
     {
       "name": "campaign",
       "type": {
@@ -2675,6 +3676,79 @@ export type Offuscate = {
       }
     },
     {
+      "name": "employee",
+      "docs": [
+        "Employee - Index-based PDA with streaming salary",
+        "Seeds: [\"employee\", batch, index]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          },
+          {
+            "name": "stealthAddress",
+            "type": "string"
+          },
+          {
+            "name": "salaryRate",
+            "type": "u64"
+          },
+          {
+            "name": "startTime",
+            "type": "i64"
+          },
+          {
+            "name": "lastClaimedAt",
+            "type": "i64"
+          },
+          {
+            "name": "totalClaimed",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "employeeStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "employeeStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "active"
+          },
+          {
+            "name": "paused"
+          },
+          {
+            "name": "terminated"
+          }
+        ]
+      }
+    },
+    {
       "name": "invite",
       "docs": [
         "Invite account - stores invitation for a recipient to join a payroll batch"
@@ -2701,6 +3775,10 @@ export type Offuscate = {
           {
             "name": "recipientStealthAddress",
             "type": "string"
+          },
+          {
+            "name": "salaryRate",
+            "type": "u64"
           },
           {
             "name": "status",
@@ -2743,6 +3821,42 @@ export type Offuscate = {
       }
     },
     {
+      "name": "masterVault",
+      "docs": [
+        "Master Vault - Global singleton that tracks all indices",
+        "This hides organizational relationships by using sequential indices"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "batchCount",
+            "type": "u32"
+          },
+          {
+            "name": "totalEmployees",
+            "type": "u32"
+          },
+          {
+            "name": "totalDeposited",
+            "type": "u64"
+          },
+          {
+            "name": "totalPaid",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "nullifierPda",
       "docs": [
         "Individual PDA for each used nullifier",
@@ -2767,6 +3881,122 @@ export type Offuscate = {
           },
           {
             "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "paymentReceipt",
+      "docs": [
+        "Anonymous Payment Receipt",
+        "Proves payment was received without revealing the amount",
+        "",
+        "Privacy Model:",
+        "- commitment = hash(employee || batch || timestamp || amount || secret)",
+        "- The employee keeps the secret",
+        "- To prove payment: reveal (employee, batch, timestamp) + show receipt exists",
+        "- To prove specific amount: reveal secret (optional, for full audits)",
+        "",
+        "Use cases:",
+        "- Bank: \"Prove you have income\" → Show receipt, proves employment",
+        "- Visa: \"Prove you're employed\" → Show receipt from recent date",
+        "- Audit: \"Prove specific amount\" → Reveal secret for full verification"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "employee",
+            "type": "pubkey"
+          },
+          {
+            "name": "batch",
+            "type": "pubkey"
+          },
+          {
+            "name": "employer",
+            "type": "pubkey"
+          },
+          {
+            "name": "commitment",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "receiptIndex",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "payrollBatch",
+      "docs": [
+        "PayrollBatch - Index-based PDA (no pubkey or name in seeds)",
+        "Seeds: [\"batch\", master_vault, index]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "masterVault",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          },
+          {
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "name": "employeeCount",
+            "type": "u32"
+          },
+          {
+            "name": "totalBudget",
+            "type": "u64"
+          },
+          {
+            "name": "totalPaid",
+            "type": "u64"
+          },
+          {
+            "name": "createdAt",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "batchStatus"
+              }
+            }
+          },
+          {
+            "name": "vaultBump",
+            "type": "u8"
+          },
+          {
+            "name": "batchBump",
             "type": "u8"
           }
         ]
