@@ -43,7 +43,7 @@ export default function InvitePage() {
   const router = useRouter();
   const inviteCode = params.code as string;
 
-  const { connected, publicKey, wallets, select } = useWallet();
+  const { connected, publicKey, wallets, select, signMessage } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const {
     fetchInvite,
@@ -142,11 +142,35 @@ export default function InvitePage() {
   }, [inviteCode, fetchInvite, fetchCampaignByPda]);
 
   // Generate stealth keypair when connected and invite has salary
-  const generateStealthKeypair = useCallback(() => {
-    const keypair = Keypair.generate();
+  // Generate SECURE DETERMINISTIC stealth keypair using wallet signature
+  // Only the wallet owner can derive this (requires signing)
+  // This ensures: 1) Recoverable if localStorage cleared, 2) Cannot be linked by external observers
+  const generateStealthKeypair = useCallback(async (forBatchIndex: number) => {
+    if (!publicKey || !signMessage) {
+      // Fallback to random if no wallet (shouldn't happen)
+      const keypair = Keypair.generate();
+      setStealthKeypair(keypair);
+      return keypair;
+    }
+
+    // Create a deterministic message to sign
+    const message = new TextEncoder().encode(
+      `Offuscate Salary Keypair Derivation\nBatch: ${forBatchIndex}\nWallet: ${publicKey.toBase58()}`
+    );
+
+    // Sign the message - only wallet owner can do this
+    const signature = await signMessage(message);
+
+    // Derive keypair from signature hash
+    const { createHash } = await import('crypto');
+    const seed = createHash('sha256')
+      .update(Buffer.from(signature))
+      .digest();
+
+    const keypair = Keypair.fromSeed(seed.slice(0, 32));
     setStealthKeypair(keypair);
     return keypair;
-  }, []);
+  }, [publicKey, signMessage]);
 
   // Wallet selection handler
   const handleWalletSelect = async (walletName: string) => {
@@ -231,7 +255,7 @@ export default function InvitePage() {
         // Use streaming flow with stealth keypair
         let keypair = stealthKeypair;
         if (!keypair) {
-          keypair = generateStealthKeypair();
+          keypair = await generateStealthKeypair(batchIndex);
         }
 
         await acceptInviteStreaming(

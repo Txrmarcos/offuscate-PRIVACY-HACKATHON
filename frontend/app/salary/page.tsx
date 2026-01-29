@@ -112,7 +112,7 @@ interface EmployeeRecord {
 }
 
 export default function SalaryPage() {
-  const { connected, publicKey, signTransaction } = useWallet();
+  const { connected, publicKey, signTransaction, signMessage } = useWallet();
   const { setVisible } = useWalletModal();
   const { stealthKeys, metaAddressString, deriveKeysFromWallet } = useStealth();
   const {
@@ -121,6 +121,7 @@ export default function SalaryPage() {
     claimSalary,
     claimSalaryWithStealth,
     fetchBatch,
+    fetchMasterVault,
   } = useProgram();
 
   const [record, setRecord] = useState<EmployeeRecord | null>(null);
@@ -129,6 +130,9 @@ export default function SalaryPage() {
   const [isClaiming, setIsClaiming] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsRecovery, setNeedsRecovery] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [potentialBatches, setPotentialBatches] = useState<number[]>([]);
 
   // Stealth keypair for streaming salary
   const [stealthKeypair, setStealthKeypair] = useState<Keypair | null>(null);
@@ -234,7 +238,29 @@ export default function SalaryPage() {
     }
   }, [publicKey]);
 
-  // Load employee record - first try stealth keypairs, then main wallet
+  // Derive SECURE stealth keypair using wallet signature
+  // Only the wallet owner can derive this (requires signing)
+  const deriveStealthKeypair = useCallback(async (batchIndex: number): Promise<Keypair> => {
+    if (!publicKey || !signMessage) throw new Error('No wallet connected');
+
+    // Create the same deterministic message as in invite page
+    const message = new TextEncoder().encode(
+      `Offuscate Salary Keypair Derivation\nBatch: ${batchIndex}\nWallet: ${publicKey.toBase58()}`
+    );
+
+    // Sign the message - only wallet owner can do this
+    const signature = await signMessage(message);
+
+    // Derive keypair from signature hash
+    const { createHash } = await import('crypto');
+    const seed = createHash('sha256')
+      .update(Buffer.from(signature))
+      .digest();
+
+    return Keypair.fromSeed(seed.slice(0, 32));
+  }, [publicKey, signMessage]);
+
+  // Load employee record - first try stealth keypairs, then derive deterministically
   const loadRecord = useCallback(async () => {
     if (!connected || !publicKey) {
       setRecord(null);
@@ -244,7 +270,7 @@ export default function SalaryPage() {
 
     setIsLoading(true);
     try {
-      // First, try to find employee using stealth keypairs
+      // First, try to find employee using stealth keypairs from localStorage
       const stealthKeypairs = loadStealthKeypairs();
 
       for (const keypair of stealthKeypairs) {
@@ -261,6 +287,22 @@ export default function SalaryPage() {
           setIsLoading(false);
           return;
         }
+      }
+
+      // Second, check if there are batches that might have our employee record
+      // We'll need a signature to derive the keypair (for privacy)
+      console.log('[Salary] localStorage empty, checking for potential batches...');
+      const masterVault = await fetchMasterVault();
+      if (masterVault && masterVault.batchCount > 0) {
+        // Store potential batches - user will need to sign to recover
+        const batches: number[] = [];
+        for (let i = 0; i < masterVault.batchCount; i++) {
+          batches.push(i);
+        }
+        setPotentialBatches(batches);
+        setNeedsRecovery(true);
+        setIsLoading(false);
+        return;
       }
 
       // Fallback: try to find with connected wallet (non-stealth flow)
@@ -280,7 +322,7 @@ export default function SalaryPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [connected, publicKey, findMyEmployeeRecord, findEmployeeByStealthPubkey, fetchBatch, loadStealthKeypairs]);
+  }, [connected, publicKey, findMyEmployeeRecord, findEmployeeByStealthPubkey, fetchBatch, loadStealthKeypairs, deriveStealthKeypair, fetchMasterVault]);
 
   useEffect(() => {
     loadRecord();
@@ -310,6 +352,57 @@ export default function SalaryPage() {
     if (!record) return 0;
     return (record.employee.salaryRate * 24 * 60 * 60) / LAMPORTS_PER_SOL;
   }, [record]);
+
+  // Recovery function - tries to derive keypair using wallet signature
+  const handleRecovery = async () => {
+    if (!publicKey || !signMessage || potentialBatches.length === 0) return;
+
+    setIsRecovering(true);
+    setError(null);
+
+    try {
+      for (const batchIndex of potentialBatches) {
+        try {
+          console.log('[Salary] Trying to recover keypair for batch', batchIndex);
+          const derivedKeypair = await deriveStealthKeypair(batchIndex);
+          const stealthRecord = await findEmployeeByStealthPubkey(derivedKeypair.publicKey);
+
+          if (stealthRecord) {
+            console.log('[Salary] Found employee via derived keypair for batch', batchIndex);
+            setRecord(stealthRecord);
+            setStealthKeypair(derivedKeypair);
+            setUsingStealth(true);
+            setNeedsRecovery(false);
+
+            // Save to localStorage for future use
+            const key = `stealth_keypairs_${publicKey.toBase58()}`;
+            const keypairs: Record<string, string> = {};
+            keypairs[`batch_${batchIndex}`] = bs58.encode(derivedKeypair.secretKey);
+            localStorage.setItem(key, JSON.stringify(keypairs));
+
+            const batch = await fetchBatch(stealthRecord.batchIndex);
+            if (batch) {
+              setBatchTitle(batch.title);
+            }
+            setIsRecovering(false);
+            return;
+          }
+        } catch (e) {
+          console.log('[Salary] No match for batch', batchIndex);
+          // Continue to next batch
+        }
+      }
+
+      // No match found
+      setNeedsRecovery(false);
+      setError('No salary record found for this wallet. You may need to accept a new invite.');
+    } catch (err: any) {
+      console.error('[Salary] Recovery failed:', err);
+      setError(err.message || 'Recovery failed. Please try again.');
+    } finally {
+      setIsRecovering(false);
+    }
+  };
 
   // Handle claim
   const handleClaim = async () => {
@@ -672,6 +765,46 @@ export default function SalaryPage() {
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-white/40 mx-auto mb-4" />
           <p className="text-white/40">Loading your salary...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Recovery mode - localStorage cleared but might have salary
+  if (needsRecovery && !record) {
+    return (
+      <div className="min-h-screen px-6 py-24 flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center">
+          <div className="w-24 h-24 mx-auto mb-8 rounded-[2.25rem] bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
+            <Key className="w-10 h-10 text-white/60" />
+          </div>
+          <h1 className="text-4xl font-black tracking-tighter text-white mb-4">Recover Salary Access</h1>
+          <p className="text-white/40 text-lg mb-3">
+            Your local data was cleared, but we can recover your salary access.
+          </p>
+          <p className="text-white/25 text-sm mb-8">
+            Sign a message with your wallet to securely re-derive your salary keypair.
+          </p>
+          <button
+            onClick={handleRecovery}
+            disabled={isRecovering}
+            className="px-8 py-4 bg-white text-black font-bold rounded-full hover:bg-white/90 transition-all flex items-center gap-2 mx-auto disabled:opacity-50"
+          >
+            {isRecovering ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Recovering...
+              </>
+            ) : (
+              <>
+                <Shield className="w-5 h-5" />
+                Sign to Recover
+              </>
+            )}
+          </button>
+          {error && (
+            <p className="text-red-400 text-sm mt-4">{error}</p>
+          )}
         </div>
       </div>
     );

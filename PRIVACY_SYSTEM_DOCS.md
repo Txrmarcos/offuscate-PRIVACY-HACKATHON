@@ -205,6 +205,80 @@ const offuscateKeypair = Keypair.fromSeed(seed.slice(0, 32));
 
 ---
 
+### Layer 1.5: Secure Salary Keypair (Signature-Based Derivation)
+
+For salary streaming, we use a **signature-based derivation** that is both **private** and **recoverable**:
+
+```typescript
+// Message to sign (deterministic)
+const message = `Offuscate Salary Keypair Derivation\nBatch: ${batchIndex}\nWallet: ${publicKey}`;
+
+// Sign with wallet - ONLY owner can do this
+const signature = await wallet.signMessage(message);
+
+// Derive keypair from signature
+const seed = sha256(signature);
+const salaryKeypair = Keypair.fromSeed(seed.slice(0, 32));
+```
+
+**Security Analysis:**
+
+```
+To derive the keypair, attacker needs:
+
+1. Message: "Offuscate Salary Keypair..."
+   └── Public (anyone can construct)
+
+2. Signature of the message
+   └── ONLY wallet owner can produce! (requires private key)
+
+3. Keypair = SHA256(signature)
+   └── Without signature, impossible to compute
+```
+
+**Comparison:**
+
+| Derivation Method | External Observer Can Link? | Recoverable if localStorage Cleared? |
+|-------------------|----------------------------|-------------------------------------|
+| Random keypair | ❌ No | ❌ No - lost forever |
+| Pubkey-based (insecure) | ✅ **Yes** - anyone can compute | ✅ Yes |
+| **Signature-based** (our approach) | ❌ **No** - requires signing | ✅ **Yes** - just sign again |
+
+**Recovery Flow:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SALARY KEYPAIR RECOVERY                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. User opens /salary page                                      │
+│     └── localStorage is empty (cleared)                          │
+│                                                                  │
+│  2. System detects potential batches exist                       │
+│     └── Shows "Recover Salary Access" screen                     │
+│                                                                  │
+│  3. User clicks "Sign to Recover"                                │
+│     └── Wallet prompts for signature                             │
+│                                                                  │
+│  4. System derives keypair from signature                        │
+│     └── Same message + same wallet = same keypair!               │
+│                                                                  │
+│  5. System finds matching employee record on-chain               │
+│     └── Salary access restored!                                  │
+│                                                                  │
+│  6. Keypair saved to localStorage for future use                 │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Why This Matters:**
+- Users don't lose salary access if they clear browser data
+- No need to backup keypair files (though still recommended)
+- Privacy is maintained - no one else can derive the keypair
+- Deterministic - same inputs always produce same outputs
+
+---
+
 ### Layer 2: ZK Compression (Light Protocol)
 
 Zero-knowledge compression hides sender and amount:

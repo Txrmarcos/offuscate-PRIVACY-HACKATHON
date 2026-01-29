@@ -430,13 +430,15 @@ Private transfers between any users using the full privacy stack: ZK Compression
 ```
 1. Receive invite code from employer
         ↓
-2. Accept invite → generates stealth keypair locally
+2. Accept invite → sign message to derive keypair (secure & recoverable)
         ↓
 3. Stealth public key registered on-chain
         ↓
 4. Salary accrues in real-time
         ↓
 5. Claim to stealth address (main wallet never exposed)
+        ↓
+6. If localStorage cleared → "Sign to Recover" restores access
 ```
 
 ### Receiving Stealth Payments
@@ -580,6 +582,27 @@ Stealth addresses are one-time addresses generated using ECDH key exchange:
 4. Employer derives **stealth address** from shared secret + spendPubKey
 5. Employee scans using viewKey, derives spending key to claim
 
+### Secure Keypair Derivation (Signature-Based)
+
+Salary keypairs are derived using wallet signatures for both **privacy** and **recoverability**:
+
+```
+Derivation: keypair = SHA256(wallet.sign(message))
+
+Where message = "Offuscate Salary Keypair Derivation\nBatch: {index}\nWallet: {pubkey}"
+```
+
+**Why this is secure:**
+- Only the wallet owner can produce the signature (requires private key)
+- External observers cannot compute the keypair (they can't sign)
+- Same message + same wallet = same signature = recoverable keypair
+
+| Method | External can link? | Recoverable? |
+|--------|-------------------|--------------|
+| Random keypair | No | No |
+| Pubkey-based derivation | **Yes** | Yes |
+| **Signature-based** (our approach) | **No** | **Yes** |
+
 ### Easy Stealth Address Sharing
 
 Both Dashboard and Salary pages feature a prominent "Your Stealth Address" card with:
@@ -643,9 +666,10 @@ const employees = await listBatchEmployees(batchIndex);
 ### Employee Operations
 
 ```typescript
-// Accept invite with stealth keypair
-const stealthKeypair = Keypair.generate();
-await acceptInviteStreaming(inviteCode, stealthMetaAddress, stealthKeypair, batchIndex);
+// Accept invite - keypair derived from wallet signature (secure & recoverable)
+// User signs: "Offuscate Salary Keypair Derivation\nBatch: {index}\nWallet: {pubkey}"
+// Keypair = SHA256(signature)
+await acceptInviteStreaming(inviteCode, stealthMetaAddress, derivedKeypair, batchIndex);
 
 // Check accrued salary
 const record = await findMyEmployeeRecord();
@@ -653,6 +677,12 @@ console.log(`Accrued: ${record.employee.accruedSalary / LAMPORTS_PER_SOL} SOL`);
 
 // Claim salary
 await claimSalaryWithStealth(batchIndex, employeeIndex, stealthKeypair);
+
+// Recovery (if localStorage cleared)
+// 1. Go to /salary page
+// 2. Click "Sign to Recover"
+// 3. Sign the same message → same keypair is derived
+// 4. Access restored!
 ```
 
 ### Privacy Pool Operations
@@ -682,10 +712,12 @@ const result = await privateZKDonationRelayed(wallet, recipientPubkey, amount);
 
 ## Security Considerations
 
-1. **Stealth Keypair Storage** - Employee must securely store stealth private key locally
-2. **Note Backup** - Private pool notes must be backed up (stored in localStorage)
-3. **Anonymity Set** - Privacy pool effectiveness depends on number of users
-4. **Timing Analysis** - Variable delays help but not perfect against sophisticated analysis
+1. **Stealth Keypair Storage** - Salary keypairs are stored in localStorage but can be recovered via wallet signature
+2. **Signature-Based Recovery** - If localStorage is cleared, users can recover access by signing a message
+3. **Note Backup** - Private pool notes must be backed up (stored in localStorage)
+4. **Anonymity Set** - Privacy pool effectiveness depends on number of users
+5. **Timing Analysis** - Variable delays help but not perfect against sophisticated analysis
+6. **Keypair Privacy** - Signature-based derivation ensures only wallet owner can compute salary keypairs
 
 ## Tech Stack
 
