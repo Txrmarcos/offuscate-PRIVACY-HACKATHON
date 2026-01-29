@@ -472,6 +472,379 @@ export async function isLightProtocolAvailable(): Promise<boolean> {
 }
 
 // ============================================================================
+// Relayer Support for Gasless ZK Transfers
+// ============================================================================
+
+export interface RelayedTransferResult {
+  success: boolean;
+  signature?: string;
+  error?: string;
+}
+
+/**
+ * Get the relayer's public key from the API
+ * This is needed to set the correct fee payer when building transactions
+ */
+export async function getRelayerPublicKey(): Promise<PublicKey | null> {
+  try {
+    const response = await fetch('/api/relayer/zk-transfer');
+    const data = await response.json();
+    if (data.configured && data.relayerAddress) {
+      return new PublicKey(data.relayerAddress);
+    }
+    return null;
+  } catch (error) {
+    console.error('[LightProtocol] Failed to get relayer public key:', error);
+    return null;
+  }
+}
+
+/**
+ * Build a ZK compress transaction with relayer as fee payer
+ * Returns the partially-signed transaction for the relayer to complete
+ */
+export async function buildRelayedCompressTx(
+  wallet: LightWallet,
+  relayerPubkey: PublicKey,
+  amountSol: number,
+  recipientPubkey?: PublicKey
+): Promise<{ tx: VersionedTransaction; error?: string }> {
+  try {
+    const connection = createLightRpc();
+    const recipient = recipientPubkey || wallet.publicKey;
+    const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
+
+    // Get state tree info
+    const treeInfos = await getStateTreeInfos(connection);
+    const outputStateTreeInfo = selectStateTreeInfo(treeInfos);
+
+    const { blockhash } = await connection.getLatestBlockhash();
+
+    // Create compress instruction - note: payer is still wallet for account ownership
+    const compressIx = await LightSystemProgram.compress({
+      payer: wallet.publicKey,
+      toAddress: recipient,
+      lamports: bn(lamports),
+      outputStateTreeInfo,
+    });
+
+    const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+      units: 1_000_000,
+    });
+
+    const computePriceIx = ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: 1,
+    });
+
+    const instructions: TransactionInstruction[] = [
+      computeBudgetIx,
+      computePriceIx,
+      compressIx,
+    ];
+
+    // Build with RELAYER as fee payer
+    const tx = buildTx(instructions, relayerPubkey, blockhash, []);
+
+    // User signs to authorize the compress (they're sending their SOL)
+    const signedTx = await wallet.signTransaction(tx);
+
+    return { tx: signedTx };
+  } catch (error: any) {
+    return { tx: null as any, error: error.message };
+  }
+}
+
+/**
+ * Build a ZK decompress transaction with relayer as fee payer
+ * This allows sending compressed SOL to a recipient without revealing fee payer
+ */
+export async function buildRelayedDecompressTx(
+  wallet: LightWallet,
+  relayerPubkey: PublicKey,
+  amountSol: number,
+  recipientPubkey: PublicKey
+): Promise<{ tx: VersionedTransaction; error?: string }> {
+  try {
+    const connection = createLightRpc();
+    const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
+
+    // Get compressed accounts
+    const compressedAccounts = await connection.getCompressedAccountsByOwner(wallet.publicKey);
+
+    if (!compressedAccounts.items || compressedAccounts.items.length === 0) {
+      return { tx: null as any, error: 'No compressed SOL found to decompress.' };
+    }
+
+    // Check balance
+    let totalLamports = BigInt(0);
+    for (const account of compressedAccounts.items) {
+      totalLamports += BigInt(account.lamports.toString());
+    }
+
+    if (totalLamports < BigInt(lamports)) {
+      return {
+        tx: null as any,
+        error: `Insufficient compressed balance. Have ${Number(totalLamports) / LAMPORTS_PER_SOL} SOL, need ${amountSol} SOL`,
+      };
+    }
+
+    // Get validity proof
+    const proof = await connection.getValidityProof(
+      compressedAccounts.items.map(a => bn(a.hash))
+    );
+
+    const { blockhash } = await connection.getLatestBlockhash();
+
+    // Create decompress instruction
+    const decompressIx = await LightSystemProgram.decompress({
+      payer: wallet.publicKey,
+      toAddress: recipientPubkey,
+      lamports: bn(lamports),
+      inputCompressedAccounts: compressedAccounts.items,
+      recentInputStateRootIndices: proof.rootIndices,
+      recentValidityProof: proof.compressedProof,
+    });
+
+    const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+      units: 1_000_000,
+    });
+
+    const computePriceIx = ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: 1,
+    });
+
+    const instructions: TransactionInstruction[] = [
+      computeBudgetIx,
+      computePriceIx,
+      decompressIx,
+    ];
+
+    // Build with RELAYER as fee payer
+    const tx = buildTx(instructions, relayerPubkey, blockhash, []);
+
+    // User signs to authorize spending their compressed accounts
+    const signedTx = await wallet.signTransaction(tx);
+
+    return { tx: signedTx };
+  } catch (error: any) {
+    return { tx: null as any, error: error.message };
+  }
+}
+
+/**
+ * Submit a partially-signed transaction to the relayer
+ */
+async function submitToRelayer(
+  tx: VersionedTransaction,
+  operationType: string
+): Promise<RelayedTransferResult> {
+  try {
+    const txBase64 = Buffer.from(tx.serialize()).toString('base64');
+
+    const response = await fetch('/api/relayer/zk-transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        signedTransaction: txBase64,
+        operationType,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || data.details || 'Relayer submission failed',
+      };
+    }
+
+    return {
+      success: true,
+      signature: data.signature,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message || 'Failed to submit to relayer',
+    };
+  }
+}
+
+/**
+ * Relayed Compress SOL - Compress with relayer paying gas
+ */
+export async function compressSOLRelayed(
+  wallet: LightWallet,
+  amountSol: number,
+  recipientPubkey?: PublicKey
+): Promise<CompressResult> {
+  try {
+    console.log('[LightProtocol] Compressing', amountSol, 'SOL via relayer...');
+
+    // Get relayer public key
+    const relayerPubkey = await getRelayerPublicKey();
+    if (!relayerPubkey) {
+      return {
+        success: false,
+        error: 'Relayer not available. Check relayer configuration.',
+      };
+    }
+
+    // Build transaction with relayer as fee payer
+    const { tx, error } = await buildRelayedCompressTx(
+      wallet,
+      relayerPubkey,
+      amountSol,
+      recipientPubkey
+    );
+
+    if (error || !tx) {
+      return { success: false, error };
+    }
+
+    // Submit to relayer
+    const result = await submitToRelayer(tx, 'compress');
+
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
+
+    console.log('[LightProtocol] Relayed compress successful:', result.signature);
+
+    return {
+      success: true,
+      signature: result.signature,
+      compressedAmount: amountSol,
+    };
+  } catch (error: any) {
+    console.error('[LightProtocol] Relayed compress error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to compress SOL via relayer',
+    };
+  }
+}
+
+/**
+ * Relayed Decompress SOL - Decompress with relayer paying gas
+ */
+export async function decompressSOLRelayed(
+  wallet: LightWallet,
+  amountSol: number,
+  recipientPubkey: PublicKey
+): Promise<DecompressResult> {
+  try {
+    console.log('[LightProtocol] Decompressing', amountSol, 'SOL via relayer to', recipientPubkey.toBase58());
+
+    // Get relayer public key
+    const relayerPubkey = await getRelayerPublicKey();
+    if (!relayerPubkey) {
+      return {
+        success: false,
+        error: 'Relayer not available. Check relayer configuration.',
+      };
+    }
+
+    // Build transaction with relayer as fee payer
+    const { tx, error } = await buildRelayedDecompressTx(
+      wallet,
+      relayerPubkey,
+      amountSol,
+      recipientPubkey
+    );
+
+    if (error || !tx) {
+      return { success: false, error };
+    }
+
+    // Submit to relayer
+    const result = await submitToRelayer(tx, 'decompress');
+
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
+
+    console.log('[LightProtocol] Relayed decompress successful:', result.signature);
+
+    return {
+      success: true,
+      signature: result.signature,
+      decompressedAmount: amountSol,
+    };
+  } catch (error: any) {
+    console.error('[LightProtocol] Relayed decompress error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to decompress SOL via relayer',
+    };
+  }
+}
+
+/**
+ * Private ZK Donation with Relayer - Complete privacy with gasless transfer
+ *
+ * This achieves maximum privacy:
+ * - Sender identity hidden via ZK compression
+ * - Fee payer identity hidden via relayer
+ * - Amount verified via zero-knowledge proof
+ */
+export async function privateZKDonationRelayed(
+  wallet: LightWallet,
+  recipientPubkey: PublicKey,
+  amountSol: number
+): Promise<TransferResult> {
+  try {
+    console.log('[LightProtocol] Starting RELAYED private ZK donation of', amountSol, 'SOL');
+
+    // Step 1: Check current compressed balance
+    const currentBalance = await getCompressedBalance(wallet.publicKey);
+    console.log('[LightProtocol] Current compressed balance:', currentBalance.sol, 'SOL');
+
+    const lamportsNeeded = Math.floor(amountSol * LAMPORTS_PER_SOL);
+
+    // Step 2: Compress more SOL if needed (via relayer)
+    if (currentBalance.lamports < lamportsNeeded) {
+      const toCompress = amountSol - currentBalance.sol + 0.002;
+      console.log('[LightProtocol] Need to compress', toCompress, 'SOL first (via relayer)');
+
+      const compressResult = await compressSOLRelayed(wallet, toCompress);
+      if (!compressResult.success) {
+        return {
+          success: false,
+          error: `Failed to compress SOL: ${compressResult.error}`,
+        };
+      }
+
+      console.log('[LightProtocol] Relayed compression successful');
+    }
+
+    // Step 3: Decompress to recipient (via relayer)
+    const decompressResult = await decompressSOLRelayed(wallet, amountSol, recipientPubkey);
+
+    if (!decompressResult.success) {
+      return {
+        success: false,
+        error: `Failed to decompress to recipient: ${decompressResult.error}`,
+      };
+    }
+
+    console.log('[LightProtocol] ✅ Relayed private ZK donation complete!');
+    return {
+      success: true,
+      signature: decompressResult.signature,
+    };
+
+  } catch (error: any) {
+    console.error('[LightProtocol] Relayed private donation error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to complete relayed private donation',
+    };
+  }
+}
+
+// ============================================================================
 // High-Level Privacy Functions
 // ============================================================================
 

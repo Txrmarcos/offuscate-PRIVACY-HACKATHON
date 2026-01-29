@@ -72,8 +72,11 @@ See [HELIUS_INTEGRATION.md](./HELIUS_INTEGRATION.md) for full documentation.
 ```
                     OFFUSCATE PRIVACY STACK
 ┌─────────────────────────────────────────────────────────────┐
-│  MAXIMUM PRIVACY: ZK + Stealth + Offuscate Wallet           │
-│  └── Sender hidden, Recipient hidden, Amount hidden         │
+│  ULTIMATE PRIVACY: ZK + Stealth + Relayer                   │
+│  └── Sender, Recipient, Amount, Fee Payer ALL hidden        │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 4: Relayer (Gasless)                                 │
+│  └── Hides fee payer identity                               │
 ├─────────────────────────────────────────────────────────────┤
 │  LAYER 3: ZK Compression (Light Protocol)                   │
 │  └── Hides sender address and transaction amount            │
@@ -88,6 +91,26 @@ See [HELIUS_INTEGRATION.md](./HELIUS_INTEGRATION.md) for full documentation.
 │  └── Fund mixing with variable delays                       │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## Architecture Diagrams
+
+### Payroll Flow (Employer → Employee)
+
+![Payroll Flow](./docs/diagrams/payroll-flow.png)
+
+Companies create batch payments that stream salary per second to employee stealth wallets. Employees can optionally route funds through the Privacy Pool for additional unlinkability.
+
+### Derive Stealth Wallet
+
+![Derive Stealth](./docs/diagrams/derive-stealth.png)
+
+Both employers and employees can derive a stealth wallet that is **not linked** to their main wallet on-chain. The derivation happens locally using cryptographic hashing.
+
+### Transfer Between Users (ZK + Stealth + Relayer)
+
+![Transfer Users](./docs/diagrams/transfer-users.png)
+
+Private transfers between any users using the full privacy stack: ZK Compression (hides sender & amount) + Stealth Addresses (hides recipient) + Relayer (hides fee payer).
 
 ## Platform Pages
 
@@ -344,32 +367,47 @@ See [HELIUS_INTEGRATION.md](./HELIUS_INTEGRATION.md) for full documentation.
 ### Privacy Options Matrix
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         PRIVACY OPTIONS MATRIX                                │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│   OPTION              SENDER    RECIPIENT   AMOUNT    USE CASE                │
-│   ───────────────────────────────────────────────────────────────────────    │
-│                                                                               │
-│   Standard            Visible   Visible     Visible   Public payments         │
-│   ───────────────────────────────────────────────────────────────────────    │
-│                                                                               │
-│   Offuscate Wallet    HIDDEN    Visible     Visible   Hide company identity   │
-│   ───────────────────────────────────────────────────────────────────────    │
-│                                                                               │
-│   Stealth Address     Visible   HIDDEN      Visible   Hide employee wallet    │
-│   ───────────────────────────────────────────────────────────────────────    │
-│                                                                               │
-│   ZK Compression      HIDDEN    Visible     HIDDEN    Hide amount             │
-│   ───────────────────────────────────────────────────────────────────────    │
-│                                                                               │
-│   ZK + Stealth        HIDDEN    HIDDEN      HIDDEN    MAXIMUM PRIVACY         │
-│   ───────────────────────────────────────────────────────────────────────    │
-│                                                                               │
-│   + Privacy Pool      BROKEN LINK between deposit and withdrawal              │
-│                                                                               │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│                              PRIVACY OPTIONS MATRIX                                    │
+├───────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                        │
+│   OPTION                  SENDER    RECIPIENT   AMOUNT    FEE PAYER   USE CASE         │
+│   ─────────────────────────────────────────────────────────────────────────────────   │
+│                                                                                        │
+│   Standard                Visible   Visible     Visible   Visible     Public payments  │
+│   ─────────────────────────────────────────────────────────────────────────────────   │
+│                                                                                        │
+│   Offuscate Wallet        HIDDEN    Visible     Visible   Visible     Hide company     │
+│   ─────────────────────────────────────────────────────────────────────────────────   │
+│                                                                                        │
+│   Stealth Address         Visible   HIDDEN      Visible   Visible     Hide recipient   │
+│   ─────────────────────────────────────────────────────────────────────────────────   │
+│                                                                                        │
+│   ZK Compression          HIDDEN    Visible     HIDDEN    Visible     Hide amount      │
+│   ─────────────────────────────────────────────────────────────────────────────────   │
+│                                                                                        │
+│   ZK + Relayer            HIDDEN    Visible     HIDDEN    HIDDEN      Gasless private  │
+│   ─────────────────────────────────────────────────────────────────────────────────   │
+│                                                                                        │
+│   ZK + Stealth            HIDDEN    HIDDEN      HIDDEN    Visible     Maximum privacy  │
+│   ─────────────────────────────────────────────────────────────────────────────────   │
+│                                                                                        │
+│   ZK + Stealth + Relayer  HIDDEN    HIDDEN      HIDDEN    HIDDEN      ULTIMATE PRIVACY │
+│   ─────────────────────────────────────────────────────────────────────────────────   │
+│                                                                                        │
+│   + Privacy Pool          BROKEN LINK between deposit and withdrawal                   │
+│                                                                                        │
+└───────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Privacy Layers Explained
+
+| Layer | Technology | What it Hides |
+|-------|------------|---------------|
+| **Stealth Address** | ECDH key exchange | Recipient identity |
+| **ZK Compression** | Light Protocol (Groth16) | Sender identity + Amount |
+| **Relayer** | Gasless transactions | Fee payer identity |
+| **Privacy Pool** | Commitment scheme | Link between deposit/withdrawal |
 
 ### Simplified Flow Diagrams
 
@@ -417,13 +455,14 @@ See [HELIUS_INTEGRATION.md](./HELIUS_INTEGRATION.md) for full documentation.
 
 ### Payment Privacy Options
 
-| Option | Sender | Recipient | Amount |
-|--------|--------|-----------|--------|
-| Standard | Visible | Visible | Visible |
-| Offuscate Wallet | Hidden | Visible | Visible |
-| Stealth Address | Visible | Hidden | Visible |
-| ZK Compression | Hidden | Visible | Hidden |
-| **ZK + Stealth** | **Hidden** | **Hidden** | **Hidden** |
+| Option | Sender | Recipient | Amount | Fee Payer |
+|--------|--------|-----------|--------|-----------|
+| Standard | Visible | Visible | Visible | Visible |
+| Offuscate Wallet | Hidden | Visible | Visible | Visible |
+| Stealth Address | Visible | Hidden | Visible | Visible |
+| ZK Compression | Hidden | Visible | Hidden | Visible |
+| ZK + Stealth | Hidden | Hidden | Hidden | Visible |
+| **ZK + Stealth + Relayer** | **Hidden** | **Hidden** | **Hidden** | **Hidden** |
 
 ## Quick Start
 
@@ -467,7 +506,26 @@ npm run build && npm start
 ```bash
 # frontend/.env.local
 NEXT_PUBLIC_RPC_URL=https://devnet.helius-rpc.com?api-key=YOUR_KEY
+NEXT_PUBLIC_HELIUS_API_KEY=YOUR_HELIUS_KEY
 NEXT_PUBLIC_PROGRAM_ID=5rCqTBfEUrTdZFcNCjMHGJjkYzGHGxBZXUhekoTjc1iq
+
+# Relayer (server-side only - for gasless transactions)
+RELAYER_SECRET_KEY=your_relayer_private_key_in_base58
+```
+
+### Relayer Setup (for Gasless Transactions)
+
+The relayer is a server-side wallet that pays gas fees on behalf of users, hiding the fee payer identity.
+
+```bash
+# 1. Generate a new keypair for the relayer
+solana-keygen new --outfile relayer-keypair.json
+
+# 2. Get the base58 private key
+# (use the output in RELAYER_SECRET_KEY)
+
+# 3. Fund the relayer with SOL (devnet)
+solana airdrop 2 <RELAYER_ADDRESS> --url devnet
 ```
 
 ## Project Structure
@@ -608,6 +666,18 @@ await privateWithdraw(note, stealthKeypair.publicKey);
 
 // Gasless withdrawal via relayer
 const result = await privateWithdrawRelayed(note, stealthKeypair);
+```
+
+### ZK Transfer Operations (with Relayer)
+
+```typescript
+import { privateZKDonation, privateZKDonationRelayed } from './lib/privacy/lightProtocol';
+
+// Standard ZK transfer (fee payer visible)
+const result = await privateZKDonation(wallet, recipientPubkey, amount);
+
+// Relayed ZK transfer (fee payer hidden - ULTIMATE PRIVACY)
+const result = await privateZKDonationRelayed(wallet, recipientPubkey, amount);
 ```
 
 ## Security Considerations

@@ -40,8 +40,11 @@ Anyone can see who pays whom, how much, and when.
 ┌─────────────────────────────────────────────────────────────┐
 │                    OFFUSCATE PRIVACY STACK                   │
 ├─────────────────────────────────────────────────────────────┤
-│  MAXIMUM PRIVACY: ZK + Stealth + Offuscate Wallet           │
-│  └── Sender hidden, Recipient hidden, Amount hidden         │
+│  ULTIMATE PRIVACY: ZK + Stealth + Relayer                   │
+│  └── Sender, Recipient, Amount, Fee Payer ALL hidden        │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 4: Relayer (Gasless)                                 │
+│  └── Hides fee payer identity                               │
 ├─────────────────────────────────────────────────────────────┤
 │  LAYER 3: ZK Compression (Light Protocol)                   │
 │  └── Hides sender address and transaction amount            │
@@ -64,6 +67,7 @@ Anyone can see who pays whom, how much, and when.
 | **Stealth Addresses** | One-time addresses for each payment, unlinkable to employee's main wallet |
 | **Easy Stealth Address Sharing** | One-click copy of your stealth meta address on Dashboard and Salary pages |
 | **ZK Compression** | Hide sender and amount using Light Protocol zero-knowledge proofs |
+| **Relayer (Gasless)** | Hide fee payer identity - server pays gas on behalf of users |
 | **Offuscate Wallet / Salary Wallet** | Derived privacy wallet for transactions |
 | **Streaming Payroll** | Real-time salary accrual per second |
 | **Invite System** | Onboard employees without exposing their wallet addresses |
@@ -258,15 +262,61 @@ withdraw:
 
 ---
 
+### Layer 4: Relayer (Gasless Transactions)
+
+The relayer is a server-side wallet that pays gas fees on behalf of users:
+
+```
+WITHOUT RELAYER:
+  user_wallet ──pays gas──► Blockchain
+       │
+       └── Fee payer = User (VISIBLE on-chain!)
+
+WITH RELAYER:
+  user_wallet ──signs tx──► Relayer Server ──pays gas──► Blockchain
+                                 │
+                                 └── Fee payer = Relayer (user hidden!)
+```
+
+**How it works:**
+1. User builds and partially signs the transaction
+2. Transaction has relayer set as fee payer
+3. User sends partially-signed tx to relayer API
+4. Relayer adds its signature and submits
+5. On-chain, only the relayer appears as fee payer
+
+**Implementation:**
+```typescript
+// Standard ZK (fee payer visible)
+await privateZKDonation(wallet, recipient, amount);
+
+// Relayed ZK (fee payer hidden - ULTIMATE PRIVACY)
+await privateZKDonationRelayed(wallet, recipient, amount);
+```
+
+**API Endpoints:**
+- `POST /api/relayer/zk-transfer` - Gasless ZK transfers
+- `POST /api/relayer/claim` - Gasless Pool claims
+- `GET /api/relayer/zk-transfer` - Check relayer status
+
+**Configuration:**
+```bash
+# Server-side only (never expose to client!)
+RELAYER_SECRET_KEY=your_relayer_private_key_in_base58
+```
+
+---
+
 ### Combined Privacy Options
 
-| Option | Sender | Recipient | Amount | How |
-|--------|--------|-----------|--------|-----|
-| Standard | Visible | Visible | Visible | Direct transfer |
-| Offuscate Wallet | Hidden | Visible | Visible | Use derived keypair |
-| Stealth Address | Visible | Hidden | Visible | One-time ECDH address |
-| ZK Compression | Hidden | Visible | Hidden | Light Protocol |
-| **ZK + Stealth** | **Hidden** | **Hidden** | **Hidden** | Maximum privacy |
+| Option | Sender | Recipient | Amount | Fee Payer | How |
+|--------|--------|-----------|--------|-----------|-----|
+| Standard | Visible | Visible | Visible | Visible | Direct transfer |
+| Offuscate Wallet | Hidden | Visible | Visible | Visible | Use derived keypair |
+| Stealth Address | Visible | Hidden | Visible | Visible | One-time ECDH address |
+| ZK Compression | Hidden | Visible | Hidden | Visible | Light Protocol |
+| ZK + Stealth | Hidden | Hidden | Hidden | Visible | Maximum privacy |
+| **ZK + Stealth + Relayer** | **Hidden** | **Hidden** | **Hidden** | **Hidden** | **ULTIMATE PRIVACY** |
 
 ---
 
