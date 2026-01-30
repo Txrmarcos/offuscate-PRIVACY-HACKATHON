@@ -72,6 +72,8 @@ export function StealthPaymentScanner({ salaryWalletKeypair }: StealthPaymentSca
     setIsScanningStender(true);
     setError(null);
 
+    let newPaymentsCount = 0;
+
     try {
       const connection = new Connection(RPC_URL, 'confirmed');
       let senderPubkey: PublicKey;
@@ -86,8 +88,6 @@ export function StealthPaymentScanner({ salaryWalletKeypair }: StealthPaymentSca
 
       // Get recent transactions from sender
       const recentSigs = await connection.getSignaturesForAddress(senderPubkey, { limit: 50 });
-
-      const foundPayments: StealthPayment[] = [...payments];
 
       for (const sigInfo of recentSigs) {
         try {
@@ -140,17 +140,22 @@ export function StealthPaymentScanner({ salaryWalletKeypair }: StealthPaymentSca
                 // Found it!
                 cacheEphemeralKey(sigInfo.signature, ephemeralPubKey, stealthAddress.toBase58(), tx.blockTime || 0);
 
-                if (!foundPayments.find(p => p.stealthAddress.equals(stealthAddress))) {
-                  foundPayments.push({
+                // Update UI immediately when payment is found
+                setPayments(prev => {
+                  if (prev.find(p => p.stealthAddress.equals(stealthAddress))) {
+                    return prev;
+                  }
+                  newPaymentsCount++;
+                  console.log('Found stealth payment from sender:', stealthAddress.toBase58());
+                  return [...prev, {
                     signature: sigInfo.signature,
                     ephemeralPubKey,
                     stealthAddress,
                     balance: balance / LAMPORTS_PER_SOL,
                     timestamp: tx.blockTime || 0,
                     claimed: false,
-                  });
-                  console.log('Found stealth payment from sender:', stealthAddress.toBase58());
-                }
+                  }];
+                });
               }
             } catch (e) {
               // Not for us
@@ -161,12 +166,10 @@ export function StealthPaymentScanner({ salaryWalletKeypair }: StealthPaymentSca
         }
       }
 
-      setPayments(foundPayments);
-
-      if (foundPayments.length === payments.length) {
+      if (newPaymentsCount === 0) {
         setError('No new stealth payments found from this sender.');
       } else {
-        setClaimSuccess(`Found ${foundPayments.length - payments.length} new stealth payment(s)!`);
+        setClaimSuccess(`Found ${newPaymentsCount} new stealth payment(s)!`);
         setSenderAddress('');
       }
     } catch (err: any) {
@@ -175,7 +178,7 @@ export function StealthPaymentScanner({ salaryWalletKeypair }: StealthPaymentSca
     } finally {
       setIsScanningStender(false);
     }
-  }, [stealthKeys, senderAddress, payments]);
+  }, [stealthKeys, senderAddress]);
 
   // Scan for stealth payments - scans ALL recent memo transactions on devnet
   const scanForPayments = useCallback(async () => {
@@ -184,12 +187,27 @@ export function StealthPaymentScanner({ salaryWalletKeypair }: StealthPaymentSca
     setIsScanning(true);
     setError(null);
     setClaimSuccess(null);
+    setPayments([]); // Clear previous payments
+
+    let totalFound = 0;
 
     try {
       const connection = new Connection(RPC_URL, 'confirmed');
-      const foundPayments: StealthPayment[] = [];
 
       console.log('Starting stealth payment scan...');
+
+      // Helper to add payment and update UI immediately
+      const addPaymentToUI = (payment: StealthPayment) => {
+        setPayments(prev => {
+          // Check if already exists
+          if (prev.find(p => p.stealthAddress.equals(payment.stealthAddress))) {
+            return prev;
+          }
+          totalFound++;
+          console.log('Added payment to UI:', payment.stealthAddress.toBase58());
+          return [...prev, payment];
+        });
+      };
 
       // 1. Process cached ephemeral keys first (fastest)
       const cachedEphemeralKeys = loadCachedEphemeralKeys();
@@ -197,7 +215,7 @@ export function StealthPaymentScanner({ salaryWalletKeypair }: StealthPaymentSca
         try {
           const balance = await connection.getBalance(new PublicKey(cached.stealthAddress));
           if (balance > 0) {
-            foundPayments.push({
+            addPaymentToUI({
               signature: cached.signature,
               ephemeralPubKey: cached.ephemeralPubKey,
               stealthAddress: new PublicKey(cached.stealthAddress),
@@ -274,16 +292,15 @@ export function StealthPaymentScanner({ salaryWalletKeypair }: StealthPaymentSca
 
                   cacheEphemeralKey(sigInfo.signature, ephemeralPubKey, stealthAddress.toBase58(), tx.blockTime || 0);
 
-                  if (!foundPayments.find(p => p.stealthAddress.equals(stealthAddress))) {
-                    foundPayments.push({
-                      signature: sigInfo.signature,
-                      ephemeralPubKey,
-                      stealthAddress,
-                      balance: balance / LAMPORTS_PER_SOL,
-                      timestamp: tx.blockTime || 0,
-                      claimed: false,
-                    });
-                  }
+                  // Update UI immediately when payment is found
+                  addPaymentToUI({
+                    signature: sigInfo.signature,
+                    ephemeralPubKey,
+                    stealthAddress,
+                    balance: balance / LAMPORTS_PER_SOL,
+                    timestamp: tx.blockTime || 0,
+                    claimed: false,
+                  });
                 }
               } catch (e) {
                 // Not for us - derivation failed or different keys
@@ -297,17 +314,10 @@ export function StealthPaymentScanner({ salaryWalletKeypair }: StealthPaymentSca
         console.error('Error scanning memo program:', e);
       }
 
-      // Remove duplicates
-      const uniquePayments = foundPayments.filter(
-        (p, i, arr) => arr.findIndex(x => x.stealthAddress.equals(p.stealthAddress)) === i
-      );
-
-      setPayments(uniquePayments);
-
-      if (uniquePayments.length === 0) {
+      if (totalFound === 0) {
         setError('No incoming stealth payments found.');
       } else {
-        setClaimSuccess(`Found ${uniquePayments.length} stealth payment(s)!`);
+        setClaimSuccess(`Found ${totalFound} stealth payment(s)!`);
       }
     } catch (err: any) {
       console.error('Scan error:', err);
