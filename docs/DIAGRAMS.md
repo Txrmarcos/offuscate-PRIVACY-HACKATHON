@@ -9,7 +9,8 @@ This document explains each architectural diagram and how the privacy technologi
 1. [Diagram 1: Derive Stealth Wallet](#diagram-1-derive-stealth-wallet)
 2. [Diagram 2: Payroll Flow (Streaming)](#diagram-2-payroll-flow-streaming)
 3. [Diagram 3: Transfer Between Users](#diagram-3-transfer-between-users)
-4. [Privacy Stack Summary](#privacy-stack-summary)
+4. [Diagram 4: Relayer Refueling System](#diagram-4-relayer-refueling-system) *(Coming Soon)*
+5. [Privacy Stack Summary](#privacy-stack-summary)
 
 ---
 
@@ -286,6 +287,141 @@ This diagram illustrates **private transfers between any users** using the full 
 3. **Anonymous Donation** - Donate to cause without public association.
 
 4. **Salary Redistribution** - Employee sends part of salary to family. No trail back to employer.
+
+---
+
+## Diagram 4: Relayer Refueling System
+
+> **Status:** Coming Soon - This feature will be implemented in a future release.
+
+### What This Diagram Shows
+
+This diagram illustrates how the **Relayer wallet is automatically refueled** to ensure gasless transactions remain operational without manual intervention.
+
+### Flow Explanation
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         RELAYER REFUELING SYSTEM                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│                         ┌─────────────────────┐                              │
+│                         │   Treasury Wallet   │                              │
+│                         │   (Protocol Owned)  │                              │
+│                         └──────────┬──────────┘                              │
+│                                    │                                         │
+│                                    │  Auto-refuel when                       │
+│                                    │  balance < threshold                    │
+│                                    │                                         │
+│                                    ▼                                         │
+│   ┌──────────────────────────────────────────────────────────────────┐      │
+│   │                      MONITORING SERVICE                           │      │
+│   │                                                                   │      │
+│   │   1. Check relayer balance every N minutes                       │      │
+│   │   2. If balance < MIN_THRESHOLD (e.g., 0.5 SOL)                  │      │
+│   │   3. Transfer REFUEL_AMOUNT (e.g., 2 SOL) from treasury          │      │
+│   │   4. Log refuel event for auditing                               │      │
+│   │                                                                   │      │
+│   └──────────────────────────────────────────────────────────────────┘      │
+│                                    │                                         │
+│                                    ▼                                         │
+│                         ┌─────────────────────┐                              │
+│                         │   Relayer Wallet    │                              │
+│                         │                     │                              │
+│                         │   Pays gas for all  │                              │
+│                         │   user transactions │                              │
+│                         └─────────────────────┘                              │
+│                                    │                                         │
+│                                    ▼                                         │
+│                    ┌───────────────────────────────┐                         │
+│                    │     Gasless Transactions      │                         │
+│                    │                               │                         │
+│                    │  • ZK Transfers               │                         │
+│                    │  • Stealth Claims             │                         │
+│                    │  • Pool Withdrawals           │                         │
+│                    └───────────────────────────────┘                         │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Planned Implementation
+
+| Component | Description | Status |
+|-----------|-------------|--------|
+| **Treasury Wallet** | Protocol-owned wallet holding refuel funds | Planned |
+| **Monitoring Service** | Background job checking relayer balance | Planned |
+| **Auto-Refuel Logic** | Automatic transfer when below threshold | Planned |
+| **Admin Dashboard** | UI to monitor relayer health and refuel history | Planned |
+| **Alerts** | Notifications when treasury is low | Planned |
+
+### Configuration (Planned)
+
+```typescript
+// Planned configuration for relayer refueling
+const RELAYER_CONFIG = {
+  // Minimum balance before triggering refuel
+  MIN_THRESHOLD: 0.5 * LAMPORTS_PER_SOL, // 0.5 SOL
+
+  // Amount to transfer when refueling
+  REFUEL_AMOUNT: 2 * LAMPORTS_PER_SOL, // 2 SOL
+
+  // Check interval
+  CHECK_INTERVAL_MS: 5 * 60 * 1000, // 5 minutes
+
+  // Treasury wallet (holds refuel funds)
+  TREASURY_PUBKEY: 'TreasuryWallet...PublicKey',
+
+  // Relayer wallet (pays gas)
+  RELAYER_PUBKEY: 'RelayerWallet...PublicKey',
+};
+```
+
+### Why Auto-Refueling Matters
+
+| Manual Refueling | Auto-Refueling |
+|------------------|----------------|
+| Requires constant monitoring | Set and forget |
+| Service can go down if forgotten | Always operational |
+| Human error risk | Automated reliability |
+| Not scalable | Scales with usage |
+
+### Refueling Flow Steps
+
+| Step | Action | Trigger |
+|------|--------|---------|
+| 1 | Monitor service checks relayer balance | Every 5 minutes |
+| 2 | Compare against MIN_THRESHOLD | Balance check |
+| 3 | If low, initiate transfer from treasury | Auto-trigger |
+| 4 | Transfer REFUEL_AMOUNT to relayer | On-chain TX |
+| 5 | Log event with timestamp and amounts | Audit trail |
+| 6 | Send alert if treasury balance is low | Admin notification |
+
+### Security Considerations
+
+| Aspect | Implementation |
+|--------|----------------|
+| **Treasury Access** | Multi-sig or program-controlled |
+| **Rate Limiting** | Max refuels per hour to prevent drain |
+| **Amount Caps** | Maximum single refuel amount |
+| **Audit Logs** | All refuels logged with timestamps |
+| **Alerts** | Anomaly detection for unusual patterns |
+
+### Use Cases for Auto-Refueling
+
+1. **High-Volume Periods** - During payroll days when many employees claim at once, relayer balance can drop quickly. Auto-refuel keeps service running.
+
+2. **24/7 Operation** - Global teams claim at all hours. No need for manual intervention during off-hours.
+
+3. **Scaling** - As user base grows, transaction volume increases. Auto-refuel adapts automatically.
+
+4. **Disaster Recovery** - If relayer runs dry, service recovers automatically once treasury refills it.
+
+### Future Enhancements
+
+- **Dynamic Thresholds** - Adjust MIN_THRESHOLD based on usage patterns
+- **Multi-Relayer Support** - Multiple relayer wallets for redundancy
+- **Fee Estimation** - Predict gas needs based on pending transactions
+- **User-Funded Relayer** - Option for users to contribute to relayer pool
 
 ---
 
