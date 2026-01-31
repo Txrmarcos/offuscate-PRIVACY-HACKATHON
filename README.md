@@ -1127,16 +1127,6 @@ solana airdrop 2 $(solana-keygen pubkey relayer-keypair.json) --url devnet
 
 ---
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing`)
-3. Make your changes
-4. Run tests (`anchor test`)
-5. Submit a pull request
-
----
-
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
