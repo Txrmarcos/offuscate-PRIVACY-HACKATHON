@@ -359,14 +359,62 @@ WITH RELAYER:
 4. Relayer adds its signature and submits
 5. On-chain, only the relayer appears as fee payer
 
+#### Relayer Fee Model
+
+The relayer charges a **0.5% privacy fee** to sustain the service:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                TWO-TRANSACTION MODEL                     │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  User wants to send: 1.0000 SOL                         │
+│                                                          │
+│  TX 1: Fee to Relayer                                   │
+│  └── 0.0050 SOL (0.5%) ──► Relayer Wallet               │
+│                                                          │
+│  TX 2: Transfer to Recipient                            │
+│  └── 0.9950 SOL ──► Recipient                           │
+│                                                          │
+│  Total: Recipient receives 0.9950 SOL                   │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Fee Calculation:**
+| Amount Sent | Fee (0.5%) | Recipient Gets |
+|-------------|------------|----------------|
+| 0.1 SOL     | 0.0005 SOL | 0.0995 SOL     |
+| 0.5 SOL     | 0.0025 SOL | 0.4975 SOL     |
+| 1.0 SOL     | 0.0050 SOL | 0.9950 SOL     |
+| 10.0 SOL    | 0.0500 SOL | 9.9500 SOL     |
+
+**Why Two Transactions?**
+- TX1 ensures the relayer receives actual SOL (not just tracked)
+- TX2 sends the remaining amount to the recipient
+- Both use ZK compression for privacy
+- Relayer pays gas for both transactions
+
 **Implementation:**
 ```typescript
 // Standard ZK (fee payer visible)
 await privateZKDonation(wallet, recipient, amount);
 
-// Relayed ZK (fee payer hidden - ULTIMATE PRIVACY)
-await privateZKDonationRelayed(wallet, recipient, amount);
+// Relayed ZK with fee (ULTIMATE PRIVACY)
+await privateTransferWithFee(wallet, recipient, amount);
+// Returns: { feeSignature, transferSignature, feeBreakdown }
 ```
+
+**Auto-Compress Feature:**
+When the user doesn't have enough compressed SOL, the system automatically compresses from the Main Wallet:
+```typescript
+// Inside privateTransferWithFee():
+if (compressedBalance < amountNeeded) {
+  await compressSOL(wallet, amountNeeded + buffer);
+}
+```
+
+> **Privacy Note:** For maximum privacy, users should compress SOL in advance (hours/days before) rather than relying on auto-compress, which creates temporal correlation.
 
 **API Endpoints:**
 - `POST /api/relayer/zk-transfer` - Gasless ZK transfers

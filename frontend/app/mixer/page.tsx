@@ -22,6 +22,8 @@ import {
   CheckCircle,
   ArrowDownToLine,
   Info,
+  ChevronDown,
+  Settings2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -29,7 +31,7 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction, SystemProgram, TransactionInstruction } from '@solana/web3.js';
 import { useProgram } from '../lib/program';
 import { useStealth } from '../lib/stealth/StealthContext';
-import { privateZKDonation, privateZKDonationRelayed, privateTransferWithFee, getRelayerPublicKey, compressSOL, type LightWallet, type TwoTxTransferResult } from '../lib/privacy/lightProtocol';
+import { privateZKDonation, privateZKDonationRelayed, privateTransferWithFee, getRelayerPublicKey, compressSOL, getCompressedBalance, type LightWallet, type TwoTxTransferResult } from '../lib/privacy/lightProtocol';
 import { TransactionResult } from '../components/TransactionResult';
 import { calculateRelayerFee, type FeeBreakdown } from '../lib/config/relayerFees';
 import { triggerOffuscation } from '../components/WaveMeshBackground';
@@ -132,8 +134,8 @@ export default function TreasuryPage() {
   const [recipientAddress, setRecipientAddress] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('0.1');
   const [recipientType, setRecipientType] = useState<RecipientType>('stealth');
-  const [useZK, setUseZK] = useState(false); // ZK to hide amount
-  const [useRelayer, setUseRelayer] = useState(false); // Relayer to hide fee payer
+  const [useZK, setUseZK] = useState(true); // ZK to hide amount - always on by default
+  const [useRelayer, setUseRelayer] = useState(true); // Relayer to hide fee payer - always on by default
   const [relayerAvailable, setRelayerAvailable] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +157,10 @@ export default function TreasuryPage() {
   const [compressing, setCompressing] = useState(false);
   const [compressError, setCompressError] = useState<string | null>(null);
   const [compressSuccess, setCompressSuccess] = useState<string | null>(null);
+  const [compressTxSignature, setCompressTxSignature] = useState<string | null>(null);
+
+  // Advanced options toggle
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Generate deterministic private keypair
   useEffect(() => {
@@ -196,11 +202,13 @@ export default function TreasuryPage() {
       setMainBalance(balance / LAMPORTS_PER_SOL);
     } catch {}
 
-    if (privateKeypair) {
-      try {
-        const balance = await connection.getBalance(privateKeypair.publicKey);
-        setStealthBalance(balance / LAMPORTS_PER_SOL);
-      } catch {}
+    // Get compressed balance from Light Protocol (not from derived keypair)
+    try {
+      const compressedBalance = await getCompressedBalance(publicKey);
+      setStealthBalance(compressedBalance.sol);
+    } catch (err) {
+      console.error('Failed to get compressed balance:', err);
+      setStealthBalance(0);
     }
 
     try {
@@ -253,6 +261,7 @@ export default function TreasuryPage() {
     setCompressing(true);
     setCompressError(null);
     setCompressSuccess(null);
+    setCompressTxSignature(null);
 
     try {
       const lightWallet: LightWallet = {
@@ -266,17 +275,12 @@ export default function TreasuryPage() {
         throw new Error(result.error || 'Failed to compress SOL');
       }
 
-      setCompressSuccess(`Successfully compressed ${amount} SOL! Your privacy pool is ready.`);
+      setCompressTxSignature(result.signature || null);
+      setCompressSuccess(`Successfully compressed ${amount} SOL!`);
       triggerOffuscation();
 
       // Refresh balances
       refreshData();
-
-      // Close modal after delay
-      setTimeout(() => {
-        setShowCompressModal(false);
-        setCompressSuccess(null);
-      }, 3000);
     } catch (err) {
       console.error('Compress error:', err);
       setCompressError(err instanceof Error ? err.message : 'Failed to compress SOL');
@@ -632,117 +636,50 @@ export default function TreasuryPage() {
           </div>
         </div>
 
-        {/* Payment Panel */}
+        {/* Payment Panel - Simplified */}
         {showPayment && (
           <div className="mb-8 p-6 rounded-2xl bg-white/[0.02] border border-white/[0.08]">
-            <h3 className="text-white font-medium mb-4">Send Payment</h3>
-
-            {/* Source Wallet Selection */}
-            <div className="mb-4">
-              <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-2">
-                From Wallet
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setSelectedWallet('main')}
-                  className={`p-4 rounded-xl border text-left transition-all ${
-                    selectedWallet === 'main' || selectedWallet === 'all'
-                      ? 'bg-white/[0.05] border-white/[0.15]'
-                      : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.1]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Wallet className="w-4 h-4 text-white/40" />
-                    <span className="text-white font-medium text-sm">Main Wallet</span>
-                  </div>
-                  <p className="text-white font-mono">{mainBalance.toFixed(4)} SOL</p>
-                </button>
-                <button
-                  onClick={() => setSelectedWallet('private')}
-                  className={`p-4 rounded-xl border text-left transition-all ${
-                    selectedWallet === 'private'
-                      ? 'bg-white/[0.05] border-white/[0.15]'
-                      : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.1]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <EyeOff className="w-4 h-4 text-white/40" />
-                    <span className="text-white font-medium text-sm">Offuscate Wallet</span>
-                  </div>
-                  <p className="text-white font-mono">{stealthBalance.toFixed(4)} SOL</p>
-                </button>
-              </div>
-              {/* Compress button */}
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-white font-medium">Send Payment</h3>
               <button
                 onClick={() => setShowCompressModal(true)}
-                className="mt-3 w-full py-2.5 px-4 bg-white/[0.03] border border-white/[0.08] rounded-xl text-white/60 text-sm hover:bg-white/[0.06] hover:text-white transition-all flex items-center justify-center gap-2"
+                className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/60 transition-colors"
               >
-                <ArrowDownToLine className="w-4 h-4" />
-                Compress SOL to Offuscate Wallet
+                <ArrowDownToLine className="w-3.5 h-3.5" />
+                Compress
               </button>
-              <p className="text-white/30 text-[10px] mt-2 text-center">
-                For maximum privacy, compress in advance before sending
-              </p>
             </div>
 
-            {/* Recipient Type */}
-            <div className="mb-4">
-              <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-2">
-                Recipient Type
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => {
-                    setRecipientType('stealth');
-                    setRecipientAddress('');
-                  }}
-                  className={`p-4 rounded-xl border text-left transition-all ${
-                    recipientType === 'stealth'
-                      ? 'bg-white/[0.05] border-white/[0.15]'
-                      : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.1]'
-                  }`}
-                >
-                  <EyeOff className={`w-5 h-5 mb-2 ${recipientType === 'stealth' ? 'text-white' : 'text-white/30'}`} />
-                  <p className="text-white font-medium text-sm">Stealth Address</p>
-                  <p className="text-white/40 text-xs">Recipient hidden on-chain</p>
-                </button>
-                <button
-                  onClick={() => {
-                    setRecipientType('public');
-                    setRecipientAddress('');
-                  }}
-                  className={`p-4 rounded-xl border text-left transition-all ${
-                    recipientType === 'public'
-                      ? 'bg-white/[0.05] border-white/[0.15]'
-                      : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.1]'
-                  }`}
-                >
-                  <Eye className={`w-5 h-5 mb-2 ${recipientType === 'public' ? 'text-white' : 'text-white/30'}`} />
-                  <p className="text-white font-medium text-sm">Public Address</p>
-                  <p className="text-white/40 text-xs">Recipient visible on-chain</p>
-                </button>
+            {/* Balances */}
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                <div className="flex items-center gap-2 mb-1">
+                  <Wallet className="w-3.5 h-3.5 text-white/40" />
+                  <span className="text-white/40 text-xs">Main Wallet</span>
+                </div>
+                <p className="text-white font-mono text-lg">{mainBalance.toFixed(4)} <span className="text-white/40 text-sm">SOL</span></p>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                <div className="flex items-center gap-2 mb-1">
+                  <Shield className="w-3.5 h-3.5 text-white/40" />
+                  <span className="text-white/40 text-xs">Offuscate (ZK)</span>
+                </div>
+                <p className="text-white font-mono text-lg">{stealthBalance.toFixed(4)} <span className="text-white/40 text-sm">SOL</span></p>
               </div>
             </div>
 
             {/* Recipient Address */}
             <div className="mb-4">
               <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-2">
-                {recipientType === 'stealth' ? 'Stealth Meta Address' : 'Recipient Address'}
+                {recipientType === 'stealth' ? 'Stealth Address' : 'Public Address'}
               </label>
               <input
                 type="text"
                 value={recipientAddress}
                 onChange={(e) => setRecipientAddress(e.target.value)}
-                placeholder={recipientType === 'stealth'
-                  ? 'st:viewPubKey:spendPubKey...'
-                  : 'Enter Solana address...'}
+                placeholder={recipientType === 'stealth' ? 'st:viewPubKey:spendPubKey...' : 'Enter Solana address...'}
                 className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl px-4 py-3 text-white font-mono text-sm focus:border-white/[0.15] transition-colors"
               />
-              {recipientType === 'stealth' && (
-                <p className="text-white/30 text-xs mt-2">
-                  Ask the recipient for their stealth meta address (format: st:viewPubKey:spendPubKey)
-                </p>
-              )}
             </div>
 
             {/* Amount */}
@@ -761,7 +698,7 @@ export default function TreasuryPage() {
                   className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl px-4 py-3 text-white text-lg font-mono focus:border-white/[0.15] transition-colors"
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-2">
-                  {['0.1', '0.5', '1'].map((val) => (
+                  {['0.1', '0.5'].map((val) => (
                     <button
                       key={val}
                       onClick={() => setPaymentAmount(val)}
@@ -778,199 +715,119 @@ export default function TreasuryPage() {
               </div>
             </div>
 
-            {/* ZK Toggle - available for both recipient types */}
-            <div className="mb-4">
-              <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-2">
-                ZK Compression (Hide Sender & Amount)
-              </label>
-              <button
-                onClick={() => setUseZK(!useZK)}
-                className={`w-full p-4 rounded-xl border text-left transition-all ${
-                  useZK
-                    ? 'bg-white/[0.08] border-white/[0.2]'
-                    : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.1]'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Shield className={`w-5 h-5 ${useZK ? 'text-white' : 'text-white/30'}`} />
-                    <div>
-                      <p className="text-white font-medium text-sm">
-                        {useZK ? 'ZK Enabled' : 'ZK Disabled'}
-                      </p>
-                      <p className="text-white/40 text-xs">
-                        {useZK
-                          ? 'Sender & Amount hidden via ZK proof'
-                          : 'Sender & Amount visible on-chain'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`w-10 h-6 rounded-full transition-all ${
-                    useZK ? 'bg-white' : 'bg-white/20'
-                  }`}>
-                    <div className={`w-4 h-4 mt-1 rounded-full transition-all ${
-                      useZK ? 'ml-5 bg-black' : 'ml-1 bg-white'
-                    }`} />
+            {/* Advanced Options Toggle */}
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full mb-4 py-2 flex items-center justify-center gap-2 text-white/40 text-xs hover:text-white/60 transition-colors"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              {showAdvanced ? 'Hide' : 'Show'} Privacy Options
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Advanced Options */}
+            {showAdvanced && (
+              <div className="mb-4 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-4">
+                {/* Recipient Type */}
+                <div>
+                  <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-2">Recipient Type</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => { setRecipientType('stealth'); setRecipientAddress(''); }}
+                      className={`p-3 rounded-lg border text-left transition-all ${
+                        recipientType === 'stealth' ? 'bg-white/[0.05] border-white/[0.15]' : 'border-white/[0.06] hover:border-white/[0.1]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <EyeOff className={`w-4 h-4 ${recipientType === 'stealth' ? 'text-white' : 'text-white/30'}`} />
+                        <div>
+                          <p className="text-white text-xs font-medium">Stealth</p>
+                          <p className="text-white/40 text-[10px]">Recipient hidden</p>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => { setRecipientType('public'); setRecipientAddress(''); }}
+                      className={`p-3 rounded-lg border text-left transition-all ${
+                        recipientType === 'public' ? 'bg-white/[0.05] border-white/[0.15]' : 'border-white/[0.06] hover:border-white/[0.1]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Eye className={`w-4 h-4 ${recipientType === 'public' ? 'text-white' : 'text-white/30'}`} />
+                        <div>
+                          <p className="text-white text-xs font-medium">Public</p>
+                          <p className="text-white/40 text-[10px]">Recipient visible</p>
+                        </div>
+                      </div>
+                    </button>
                   </div>
                 </div>
-              </button>
-            </div>
 
-            {/* Relayer Toggle - only visible when ZK is enabled */}
-            {useZK && (
-              <div className="mb-4">
-                <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-2">
-                  Full Privacy Mode (Hide Fee Payer)
-                </label>
-                <button
-                  onClick={() => setUseRelayer(!useRelayer)}
-                  disabled={!relayerAvailable}
-                  className={`w-full p-4 rounded-xl border text-left transition-all ${
-                    useRelayer
-                      ? 'bg-white/[0.08] border-white/[0.2]'
-                      : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.1]'
-                  } ${!relayerAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
+                {/* ZK Toggle */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className={`w-4 h-4 ${useZK ? 'text-white' : 'text-white/30'}`} />
+                    <div>
+                      <p className="text-white text-xs font-medium">ZK Compression</p>
+                      <p className="text-white/40 text-[10px]">Hide sender & amount</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setUseZK(!useZK)}
+                    className={`w-10 h-6 rounded-full transition-all ${useZK ? 'bg-white' : 'bg-white/20'}`}
+                  >
+                    <div className={`w-4 h-4 mt-1 rounded-full transition-all ${useZK ? 'ml-5 bg-black' : 'ml-1 bg-white'}`} />
+                  </button>
+                </div>
+
+                {/* Relayer Toggle */}
+                {useZK && (
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Shield className={`w-5 h-5 ${useRelayer ? 'text-white' : 'text-white/30'}`} />
+                    <div className="flex items-center gap-2">
+                      <Shield className={`w-4 h-4 ${useRelayer ? 'text-white' : 'text-white/30'}`} />
                       <div>
-                        <p className="text-white font-medium text-sm">
-                          {useRelayer ? 'Full Privacy Enabled' : 'Standard Privacy'}
-                        </p>
-                        <p className="text-white/40 text-xs">
-                          {!relayerAvailable
-                            ? 'Relayer not configured on server'
-                            : useRelayer
-                            ? 'Relayer pays gas • 0.5% privacy fee applies'
-                            : 'Your wallet pays gas (visible on-chain)'}
+                        <p className="text-white text-xs font-medium">Full Privacy (Relayer)</p>
+                        <p className="text-white/40 text-[10px]">
+                          {!relayerAvailable ? 'Not available' : 'Hide fee payer • 0.5% fee'}
                         </p>
                       </div>
                     </div>
-                    <div className={`w-10 h-6 rounded-full transition-all ${
-                      useRelayer ? 'bg-white' : 'bg-white/20'
-                    }`}>
-                      <div className={`w-4 h-4 mt-1 rounded-full transition-all ${
-                        useRelayer ? 'ml-5 bg-black' : 'ml-1 bg-white'
-                      }`} />
-                    </div>
-                  </div>
-                </button>
-                {/* Fee info when relayer is enabled */}
-                {useRelayer && parseFloat(paymentAmount) > 0 && (
-                  <div className="mt-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-                    <div className="flex items-center gap-2 text-orange-400/80 text-xs">
-                      <Shield className="w-3 h-3" />
-                      <span>Privacy fee: {(parseFloat(paymentAmount) * 0.005).toFixed(4)} SOL (0.5%)</span>
-                    </div>
-                    <p className="text-orange-400/60 text-[10px] mt-1">
-                      Recipient receives: {(parseFloat(paymentAmount) * 0.995).toFixed(4)} SOL
-                    </p>
+                    <button
+                      onClick={() => setUseRelayer(!useRelayer)}
+                      disabled={!relayerAvailable}
+                      className={`w-10 h-6 rounded-full transition-all ${useRelayer ? 'bg-white' : 'bg-white/20'} ${!relayerAvailable ? 'opacity-50' : ''}`}
+                    >
+                      <div className={`w-4 h-4 mt-1 rounded-full transition-all ${useRelayer ? 'ml-5 bg-black' : 'ml-1 bg-white'}`} />
+                    </button>
                   </div>
                 )}
-                {/* Auto-compress warning when insufficient compressed balance */}
-                {useRelayer && parseFloat(paymentAmount) > 0 && stealthBalance < parseFloat(paymentAmount) && (
-                  <div className="mt-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-yellow-400/80 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-yellow-400/80 text-xs font-medium">Auto-compress will be triggered</p>
-                        <p className="text-yellow-400/60 text-[10px] mt-1">
-                          You have {stealthBalance.toFixed(4)} SOL compressed but need {paymentAmount} SOL.
-                          The system will compress from your Main Wallet automatically.
-                        </p>
-                        <p className="text-yellow-400/50 text-[10px] mt-1 italic">
-                          ⚠️ For maximum privacy, compress SOL in advance (hours/days before) using the button above.
-                        </p>
-                      </div>
-                    </div>
+
+                {/* Privacy Summary - compact */}
+                <div className="pt-3 border-t border-white/[0.06]">
+                  <div className="flex flex-wrap gap-2 text-[10px]">
+                    <span className={useZK ? 'text-white' : 'text-white/30'}>
+                      {useZK ? '✓' : '✗'} Sender
+                    </span>
+                    <span className={recipientType === 'stealth' ? 'text-white' : 'text-white/30'}>
+                      {recipientType === 'stealth' ? '✓' : '✗'} Recipient
+                    </span>
+                    <span className={useZK ? 'text-white' : 'text-white/30'}>
+                      {useZK ? '✓' : '✗'} Amount
+                    </span>
+                    <span className={useZK && useRelayer ? 'text-white' : 'text-white/30'}>
+                      {useZK && useRelayer ? '✓' : '✗'} Fee Payer
+                    </span>
                   </div>
-                )}
+                </div>
               </div>
             )}
 
-            {/* Privacy Summary */}
-            <div className={`mb-6 p-4 rounded-xl border transition-all ${
-              recipientType === 'stealth' && useZK
-                ? 'bg-white/[0.05] border-white/[0.15]'
-                : 'bg-white/[0.02] border-white/[0.06]'
-            }`}>
-              <div className="flex items-center gap-3 mb-3">
-                <Shield className={`w-5 h-5 ${
-                  recipientType === 'stealth' && useZK
-                    ? 'text-white'
-                    : (selectedWallet === 'private' || useZK) && (recipientType === 'stealth' || useZK)
-                    ? 'text-white/70'
-                    : 'text-white/40'
-                }`} />
-                <span className="text-white font-medium text-sm">Privacy Summary</span>
-              </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-white/40">Sender</span>
-                  <span className={
-                    selectedWallet === 'private' || useZK
-                      ? 'text-white'
-                      : 'text-white/30'
-                  }>
-                    {useZK
-                      ? '✓ Hidden (ZK Proof)'
-                      : selectedWallet === 'private'
-                      ? '✓ Hidden (Offuscate Wallet)'
-                      : '✗ Visible'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/40">Recipient</span>
-                  <span className={recipientType === 'stealth' ? 'text-white' : 'text-white/30'}>
-                    {recipientType === 'stealth'
-                      ? '✓ Hidden (Stealth Address)'
-                      : '✗ Visible'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/40">Amount</span>
-                  <span className={useZK ? 'text-white' : 'text-white/30'}>
-                    {useZK
-                      ? '✓ Hidden (ZK Compressed)'
-                      : '✗ Visible'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/40">Fee Payer</span>
-                  <span className={useZK && useRelayer ? 'text-white' : 'text-white/30'}>
-                    {useZK && useRelayer
-                      ? '✓ Hidden (Relayer)'
-                      : '✗ Visible'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Privacy Score */}
-              <div className="mt-3 pt-3 border-t border-white/[0.06]">
-                {recipientType === 'stealth' && useZK && useRelayer ? (
-                  <p className="text-white text-xs font-medium">
-                    ULTIMATE PRIVACY - Sender, Recipient, Amount & Fee Payer ALL hidden!
-                  </p>
-                ) : recipientType === 'stealth' && useZK ? (
-                  <p className="text-white text-xs font-medium">
-                    MAXIMUM PRIVACY - Sender, Recipient & Amount hidden (enable Relayer for fee payer)
-                  </p>
-                ) : (selectedWallet === 'private' || useZK) && recipientType === 'stealth' ? (
-                  <p className="text-white/70 text-xs font-medium">
-                    High Privacy - Sender & Recipient hidden (enable ZK for amount)
-                  </p>
-                ) : useZK ? (
-                  <p className="text-white/70 text-xs font-medium">
-                    High Privacy - Sender & Amount hidden (use Stealth for recipient)
-                  </p>
-                ) : (
-                  <p className="text-white/40 text-xs">
-                    Enable ZK and/or Stealth Address for better privacy
-                  </p>
-                )}
-              </div>
-            </div>
+            {/* Fee info when relayer enabled */}
+            {useZK && useRelayer && parseFloat(paymentAmount) > 0 && (
+              <p className="text-white/30 text-xs mb-4">
+                Fee: {(parseFloat(paymentAmount) * 0.005).toFixed(4)} SOL • Recipient gets: {(parseFloat(paymentAmount) * 0.995).toFixed(4)} SOL
+              </p>
+            )}
 
             {/* Pay button */}
             <button
@@ -981,23 +838,12 @@ export default function TreasuryPage() {
               {processing ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  {recipientType === 'stealth'
-                    ? 'Generating Stealth Address...'
-                    : useZK && useRelayer
-                    ? 'Creating ZK Proof via Relayer...'
-                    : useZK
-                    ? 'Creating ZK Proof...'
-                    : 'Processing...'}
+                  Processing...
                 </>
               ) : (
                 <>
-                  {recipientType === 'stealth' || useZK ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                  Send {paymentAmount} SOL
-                  {recipientType === 'stealth' || useZK ? ' Privately' : ''}
+                  {recipientType === 'stealth' || useZK ? <EyeOff className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                  Send {paymentAmount} SOL{recipientType === 'stealth' || useZK ? ' Privately' : ''}
                 </>
               )}
             </button>
@@ -1386,41 +1232,65 @@ export default function TreasuryPage() {
 
             {/* Success */}
             {compressSuccess && (
-              <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-                <div className="flex items-center gap-2">
+              <div className="mb-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
                   <CheckCircle className="w-4 h-4 text-green-400" />
-                  <p className="text-green-400 text-xs">{compressSuccess}</p>
+                  <p className="text-green-400 text-sm font-medium">{compressSuccess}</p>
                 </div>
+                {compressTxSignature && (
+                  <a
+                    href={`https://explorer.solana.com/tx/${compressTxSignature}?cluster=devnet`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-green-400/60 hover:text-green-400 flex items-center gap-1 font-mono break-all"
+                  >
+                    TX: {compressTxSignature.slice(0, 20)}...{compressTxSignature.slice(-8)}
+                    <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                  </a>
+                )}
               </div>
             )}
 
             {/* Actions */}
-            <div className="flex gap-3">
+            {compressSuccess ? (
               <button
-                onClick={() => setShowCompressModal(false)}
-                disabled={compressing}
-                className="flex-1 py-3 border border-white/[0.06] text-white font-medium rounded-xl hover:bg-white/[0.03] transition-all disabled:opacity-50"
+                onClick={() => {
+                  setShowCompressModal(false);
+                  setCompressSuccess(null);
+                  setCompressTxSignature(null);
+                }}
+                className="w-full py-3 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all"
               >
-                Cancel
+                Done
               </button>
-              <button
-                onClick={handleCompress}
-                disabled={compressing || parseFloat(compressAmount) <= 0 || parseFloat(compressAmount) > mainBalance}
-                className="flex-1 py-3 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {compressing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Compressing...
-                  </>
-                ) : (
-                  <>
-                    <ArrowDownToLine className="w-4 h-4" />
-                    Compress {compressAmount} SOL
-                  </>
-                )}
-              </button>
-            </div>
+            ) : (
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowCompressModal(false)}
+                  disabled={compressing}
+                  className="flex-1 py-3 border border-white/[0.06] text-white font-medium rounded-xl hover:bg-white/[0.03] transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCompress}
+                  disabled={compressing || parseFloat(compressAmount) <= 0 || parseFloat(compressAmount) > mainBalance}
+                  className="flex-1 py-3 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {compressing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Compressing...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownToLine className="w-4 h-4" />
+                      Compress {compressAmount} SOL
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

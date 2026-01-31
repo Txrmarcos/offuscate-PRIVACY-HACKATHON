@@ -24,7 +24,7 @@ Offuscate is the first **privacy-first B2B payroll platform** on Solana. Pay emp
   - [Derive Stealth Wallet](#diagram-1-derive-stealth-wallet)
   - [Payroll Flow](#diagram-2-payroll-flow-streaming)
   - [Transfer Between Users](#diagram-3-transfer-between-users-full-privacy)
-  - [Relayer Refueling](#diagram-4-relayer-refueling-system) *(Coming Soon)*
+  - [Relayer Refueling](#diagram-4-relayer-refueling-system)
   - [Privacy Stack Summary](#privacy-stack-summary)
 - [Getting Started](#getting-started)
 - [Usage](#usage)
@@ -847,108 +847,104 @@ This diagram illustrates **private transfers between any users** using the full 
 
 ---
 
-### Diagram 4: Relayer Refueling System
+### Diagram 4: Relayer Self-Sustaining Fee Model
 
-> **Status:** Coming Soon - This feature will be implemented in a future release.
+> **Status:** ✅ Implemented - The relayer is self-sustaining via the 0.5% privacy fee.
 
 #### What This Diagram Shows
 
-This diagram illustrates how the **Relayer wallet is automatically refueled** to ensure gasless transactions remain operational without manual intervention.
+This diagram illustrates how the **Relayer wallet is automatically funded** through a 0.5% fee on each private transfer, creating a self-sustaining system.
 
 #### Flow Explanation
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         RELAYER REFUELING SYSTEM                             │
+│                    RELAYER SELF-SUSTAINING MODEL                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│                         ┌─────────────────────┐                              │
-│                         │   Treasury Wallet   │                              │
-│                         │   (Protocol Owned)  │                              │
-│                         └──────────┬──────────┘                              │
-│                                    │                                         │
-│                                    │  Auto-refuel when                       │
-│                                    │  balance < threshold                    │
-│                                    │                                         │
-│                                    ▼                                         │
-│   ┌──────────────────────────────────────────────────────────────────┐      │
-│   │                      MONITORING SERVICE                           │      │
-│   │                                                                   │      │
-│   │   1. Check relayer balance every N minutes                       │      │
-│   │   2. If balance < MIN_THRESHOLD (e.g., 0.5 SOL)                  │      │
-│   │   3. Transfer REFUEL_AMOUNT (e.g., 2 SOL) from treasury          │      │
-│   │   4. Log refuel event for auditing                               │      │
-│   │                                                                   │      │
-│   └──────────────────────────────────────────────────────────────────┘      │
-│                                    │                                         │
-│                                    ▼                                         │
-│                         ┌─────────────────────┐                              │
-│                         │   Relayer Wallet    │                              │
-│                         │                     │                              │
-│                         │   Pays gas for all  │                              │
-│                         │   user transactions │                              │
-│                         └─────────────────────┘                              │
-│                                    │                                         │
-│                                    ▼                                         │
-│                    ┌───────────────────────────────┐                         │
-│                    │     Gasless Transactions      │                         │
-│                    │                               │                         │
-│                    │  • ZK Transfers               │                         │
-│                    │  • Stealth Claims             │                         │
-│                    │  • Pool Withdrawals           │                         │
-│                    └───────────────────────────────┘                         │
+│     User wants to send 1.0 SOL privately                                    │
+│                           │                                                  │
+│                           ▼                                                  │
+│     ┌─────────────────────────────────────────────────────────────────┐     │
+│     │                  TWO-TRANSACTION MODEL                           │     │
+│     ├─────────────────────────────────────────────────────────────────┤     │
+│     │                                                                  │     │
+│     │   TX 1: Fee Payment                                             │     │
+│     │   ┌──────────────────────────────────────────────────────┐      │     │
+│     │   │  User's Compressed SOL                               │      │     │
+│     │   │         │                                            │      │     │
+│     │   │         │  Decompress 0.005 SOL (0.5%)               │      │     │
+│     │   │         ▼                                            │      │     │
+│     │   │  ┌─────────────────┐                                 │      │     │
+│     │   │  │ Relayer Wallet  │  ◄── Receives fee in SOL       │      │     │
+│     │   │  │ (Pays all gas)  │      (covers gas + profit)      │      │     │
+│     │   │  └─────────────────┘                                 │      │     │
+│     │   └──────────────────────────────────────────────────────┘      │     │
+│     │                           │                                      │     │
+│     │                           ▼                                      │     │
+│     │   TX 2: Transfer to Recipient                                   │     │
+│     │   ┌──────────────────────────────────────────────────────┐      │     │
+│     │   │  User's Compressed SOL                               │      │     │
+│     │   │         │                                            │      │     │
+│     │   │         │  Decompress 0.995 SOL                      │      │     │
+│     │   │         ▼                                            │      │     │
+│     │   │  ┌─────────────────┐                                 │      │     │
+│     │   │  │   Recipient     │  ◄── Receives 0.995 SOL        │      │     │
+│     │   │  └─────────────────┘                                 │      │     │
+│     │   └──────────────────────────────────────────────────────┘      │     │
+│     │                                                                  │     │
+│     └─────────────────────────────────────────────────────────────────┘     │
+│                                                                              │
+│     Result:                                                                  │
+│     ├── Relayer: +0.005 SOL (self-sustaining)                               │
+│     ├── Recipient: +0.995 SOL                                               │
+│     └── Privacy: 100% maintained (fee from private funds)                   │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Planned Implementation
+#### Implementation
 
 | Component | Description | Status |
 |-----------|-------------|--------|
-| **Treasury Wallet** | Protocol-owned wallet holding refuel funds | Planned |
-| **Monitoring Service** | Background job checking relayer balance | Planned |
-| **Auto-Refuel Logic** | Automatic transfer when below threshold | Planned |
-| **Admin Dashboard** | UI to monitor relayer health and refuel history | Planned |
-| **Alerts** | Notifications when treasury is low | Planned |
+| **Fee Calculation** | 0.5% of transfer amount | ✅ Implemented |
+| **Two-TX Model** | TX1: Fee to relayer, TX2: Amount to recipient | ✅ Implemented |
+| **Auto-Compress** | Automatically compress SOL if insufficient balance | ✅ Implemented |
+| **Fee Config** | Min: 0.001 SOL, Max: 0.1 SOL | ✅ Implemented |
 
-#### Configuration (Planned)
+#### Configuration
 
 ```typescript
-// Planned configuration for relayer refueling
-const RELAYER_CONFIG = {
-  // Minimum balance before triggering refuel
-  MIN_THRESHOLD: 0.5 * LAMPORTS_PER_SOL, // 0.5 SOL
+// frontend/app/lib/config/relayerFees.ts
+export const RELAYER_FEE_PERCENTAGE = 0.005; // 0.5%
+export const RELAYER_FEE_MIN_SOL = 0.001;    // Minimum fee
+export const RELAYER_FEE_MAX_SOL = 0.1;      // Maximum fee cap
 
-  // Amount to transfer when refueling
-  REFUEL_AMOUNT: 2 * LAMPORTS_PER_SOL, // 2 SOL
-
-  // Check interval
-  CHECK_INTERVAL_MS: 5 * 60 * 1000, // 5 minutes
-
-  // Treasury wallet (holds refuel funds)
-  TREASURY_PUBKEY: 'TreasuryWallet...PublicKey',
-
-  // Relayer wallet (pays gas)
-  RELAYER_PUBKEY: 'RelayerWallet...PublicKey',
-};
+// Usage
+const breakdown = calculateRelayerFee(1.0);
+// breakdown.feeAmount = 0.005 SOL
+// breakdown.recipientAmount = 0.995 SOL
 ```
 
-#### Why Auto-Refueling Matters
+#### Why This Model Works
 
-| Manual Refueling | Auto-Refueling |
-|------------------|----------------|
-| Requires constant monitoring | Set and forget |
-| Service can go down if forgotten | Always operational |
-| Human error risk | Automated reliability |
-| Not scalable | Scales with usage |
+| Aspect | Benefit |
+|--------|---------|
+| **Self-Sustaining** | Every transfer funds the relayer - no external funding needed |
+| **Privacy Preserved** | Fee comes from compressed (private) funds |
+| **Scalable** | More usage = more fees = more capacity |
+| **Transparent** | Fee shown in UI before transaction |
+| **Fair** | Only users wanting full privacy pay the fee |
 
-#### Use Cases for Auto-Refueling
+#### Fee Examples
 
-1. **High-Volume Periods** - During payroll days when many employees claim at once, relayer balance can drop quickly. Auto-refuel keeps service running.
-
-2. **24/7 Operation** - Global teams claim at all hours. No need for manual intervention during off-hours.
-
-3. **Scaling** - As user base grows, transaction volume increases. Auto-refuel adapts automatically.
+| Send Amount | Fee (0.5%) | Recipient Gets |
+|-------------|------------|----------------|
+| 0.1 SOL     | 0.001 SOL  | 0.099 SOL      |
+| 0.5 SOL     | 0.0025 SOL | 0.4975 SOL     |
+| 1.0 SOL     | 0.005 SOL  | 0.995 SOL      |
+| 10.0 SOL    | 0.05 SOL   | 9.95 SOL       |
+| 100.0 SOL   | 0.1 SOL    | 99.9 SOL       |
 
 ---
 
@@ -1008,7 +1004,7 @@ const RELAYER_CONFIG = {
 │                                      ▼                                       │
 │                              ┌─────────────────┐                              │
 │                              │    Relayer      │  ◄── Diagram 4               │
-│                              │   (Gasless)     │      (Coming Soon)           │
+│                              │   (Gasless)     │      (0.5% Fee Model)        │
 │                              └────────┬────────┘                              │
 │                                       │                                       │
 │                                       ▼                                       │
