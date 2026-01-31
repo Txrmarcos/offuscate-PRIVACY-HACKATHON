@@ -147,11 +147,17 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         console.log('No invites found or invite type not initialized');
       }
 
-      // User has no on-chain role
+      // User has no on-chain role yet
+      // Check if they have a stored role preference (e.g., selected "employer" in onboarding)
+      const storedRole = loadRoleFromStorage(walletAddress);
       lastCheckedWallet.current = walletAddress;
 
       if (pendingInviteCode) {
         setRoleState(null);
+        setNeedsOnboarding(false);
+      } else if (storedRole) {
+        // Respect localStorage role if user already selected one
+        setRoleState(storedRole);
         setNeedsOnboarding(false);
       } else {
         setRoleState(null);

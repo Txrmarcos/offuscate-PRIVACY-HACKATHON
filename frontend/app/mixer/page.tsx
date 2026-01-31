@@ -20,6 +20,8 @@ import {
   ExternalLink,
   AlertTriangle,
   CheckCircle,
+  ArrowDownToLine,
+  Info,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -27,7 +29,7 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction, SystemProgram, TransactionInstruction } from '@solana/web3.js';
 import { useProgram } from '../lib/program';
 import { useStealth } from '../lib/stealth/StealthContext';
-import { privateZKDonation, privateZKDonationRelayed, privateTransferWithFee, getRelayerPublicKey, type LightWallet, type TwoTxTransferResult } from '../lib/privacy/lightProtocol';
+import { privateZKDonation, privateZKDonationRelayed, privateTransferWithFee, getRelayerPublicKey, compressSOL, type LightWallet, type TwoTxTransferResult } from '../lib/privacy/lightProtocol';
 import { TransactionResult } from '../components/TransactionResult';
 import { calculateRelayerFee, type FeeBreakdown } from '../lib/config/relayerFees';
 import { triggerOffuscation } from '../components/WaveMeshBackground';
@@ -147,6 +149,13 @@ export default function TreasuryPage() {
     activeBatches: 0,
   });
 
+  // Compress modal state
+  const [showCompressModal, setShowCompressModal] = useState(false);
+  const [compressAmount, setCompressAmount] = useState('0.5');
+  const [compressing, setCompressing] = useState(false);
+  const [compressError, setCompressError] = useState<string | null>(null);
+  const [compressSuccess, setCompressSuccess] = useState<string | null>(null);
+
   // Generate deterministic private keypair
   useEffect(() => {
     const generateKeypair = async () => {
@@ -221,6 +230,59 @@ export default function TreasuryPage() {
     await navigator.clipboard.writeText(text);
     setCopied(id);
     setTimeout(() => setCopied(null), 2000);
+  };
+
+  // Manual compress SOL for better privacy
+  const handleCompress = async () => {
+    if (!publicKey || !signTransaction) {
+      setVisible(true);
+      return;
+    }
+
+    const amount = parseFloat(compressAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setCompressError('Invalid amount');
+      return;
+    }
+
+    if (amount > mainBalance) {
+      setCompressError('Insufficient balance in main wallet');
+      return;
+    }
+
+    setCompressing(true);
+    setCompressError(null);
+    setCompressSuccess(null);
+
+    try {
+      const lightWallet: LightWallet = {
+        publicKey,
+        signTransaction: signTransaction as any,
+      };
+
+      const result = await compressSOL(lightWallet, amount);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to compress SOL');
+      }
+
+      setCompressSuccess(`Successfully compressed ${amount} SOL! Your privacy pool is ready.`);
+      triggerOffuscation();
+
+      // Refresh balances
+      refreshData();
+
+      // Close modal after delay
+      setTimeout(() => {
+        setShowCompressModal(false);
+        setCompressSuccess(null);
+      }, 3000);
+    } catch (err) {
+      console.error('Compress error:', err);
+      setCompressError(err instanceof Error ? err.message : 'Failed to compress SOL');
+    } finally {
+      setCompressing(false);
+    }
   };
 
   // Send payment
@@ -610,6 +672,17 @@ export default function TreasuryPage() {
                   <p className="text-white font-mono">{stealthBalance.toFixed(4)} SOL</p>
                 </button>
               </div>
+              {/* Compress button */}
+              <button
+                onClick={() => setShowCompressModal(true)}
+                className="mt-3 w-full py-2.5 px-4 bg-white/[0.03] border border-white/[0.08] rounded-xl text-white/60 text-sm hover:bg-white/[0.06] hover:text-white transition-all flex items-center justify-center gap-2"
+              >
+                <ArrowDownToLine className="w-4 h-4" />
+                Compress SOL to Offuscate Wallet
+              </button>
+              <p className="text-white/30 text-[10px] mt-2 text-center">
+                For maximum privacy, compress in advance before sending
+              </p>
             </div>
 
             {/* Recipient Type */}
@@ -793,6 +866,24 @@ export default function TreasuryPage() {
                     <p className="text-orange-400/60 text-[10px] mt-1">
                       Recipient receives: {(parseFloat(paymentAmount) * 0.995).toFixed(4)} SOL
                     </p>
+                  </div>
+                )}
+                {/* Auto-compress warning when insufficient compressed balance */}
+                {useRelayer && parseFloat(paymentAmount) > 0 && stealthBalance < parseFloat(paymentAmount) && (
+                  <div className="mt-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-yellow-400/80 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-yellow-400/80 text-xs font-medium">Auto-compress will be triggered</p>
+                        <p className="text-yellow-400/60 text-[10px] mt-1">
+                          You have {stealthBalance.toFixed(4)} SOL compressed but need {paymentAmount} SOL.
+                          The system will compress from your Main Wallet automatically.
+                        </p>
+                        <p className="text-yellow-400/50 text-[10px] mt-1 italic">
+                          ⚠️ For maximum privacy, compress SOL in advance (hours/days before) using the button above.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1216,6 +1307,123 @@ export default function TreasuryPage() {
           <StealthPaymentScanner />
         </div>
       </div>
+
+      {/* Compress Modal */}
+      {showCompressModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => !compressing && setShowCompressModal(false)}
+          />
+          <div className="relative w-full max-w-md bg-[#0a0a0a] border border-white/[0.08] rounded-2xl p-6">
+            <h2 className="text-xl font-semibold text-white mb-2">Compress SOL</h2>
+            <p className="text-white/40 text-sm mb-6">
+              Move SOL from your Main Wallet to your Offuscate Wallet (compressed/private).
+            </p>
+
+            {/* Privacy tip */}
+            <div className="mb-6 p-4 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-white/40 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-white text-sm font-medium mb-1">Privacy Tip</p>
+                  <p className="text-white/40 text-xs">
+                    For maximum privacy, compress SOL and wait hours or days before making private transfers.
+                    This increases the anonymity set and makes it harder to correlate transactions.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Balance info */}
+            <div className="mb-4 p-3 bg-white/[0.02] rounded-xl flex justify-between">
+              <span className="text-white/40 text-sm">Available in Main Wallet</span>
+              <span className="text-white font-mono text-sm">{mainBalance.toFixed(4)} SOL</span>
+            </div>
+
+            {/* Amount input */}
+            <div className="mb-4">
+              <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-2">
+                Amount to Compress
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={compressAmount}
+                  onChange={(e) => setCompressAmount(e.target.value)}
+                  placeholder="0.00"
+                  step="0.1"
+                  min="0.01"
+                  max={mainBalance}
+                  disabled={compressing}
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl px-4 py-3 text-white text-lg font-mono focus:border-white/[0.15] transition-colors disabled:opacity-50"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-2">
+                  {['0.5', '1', '2'].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => setCompressAmount(val)}
+                      disabled={compressing || parseFloat(val) > mainBalance}
+                      className={`px-2.5 py-1 text-xs rounded-lg transition-all ${
+                        compressAmount === val
+                          ? 'bg-white text-black'
+                          : 'bg-white/[0.05] text-white/40 hover:text-white disabled:opacity-30'
+                      }`}
+                    >
+                      {val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Error */}
+            {compressError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                <p className="text-red-400 text-xs">{compressError}</p>
+              </div>
+            )}
+
+            {/* Success */}
+            {compressSuccess && (
+              <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-green-400" />
+                  <p className="text-green-400 text-xs">{compressSuccess}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCompressModal(false)}
+                disabled={compressing}
+                className="flex-1 py-3 border border-white/[0.06] text-white font-medium rounded-xl hover:bg-white/[0.03] transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCompress}
+                disabled={compressing || parseFloat(compressAmount) <= 0 || parseFloat(compressAmount) > mainBalance}
+                className="flex-1 py-3 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {compressing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Compressing...
+                  </>
+                ) : (
+                  <>
+                    <ArrowDownToLine className="w-4 h-4" />
+                    Compress {compressAmount} SOL
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

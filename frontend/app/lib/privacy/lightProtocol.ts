@@ -955,6 +955,35 @@ export async function privateTransferWithFee(
     }
 
     // ========================================
+    // Step 0: Check compressed balance and auto-compress if needed
+    // ========================================
+    const currentBalance = await getCompressedBalance(wallet.publicKey);
+    console.log('[LightProtocol] Current compressed balance:', currentBalance.sol, 'SOL');
+
+    // Total needed = amount to send (which includes fee that will be deducted)
+    const lamportsNeeded = feeBreakdown.originalLamports;
+
+    if (currentBalance.lamports < lamportsNeeded) {
+      // Need to compress more SOL first
+      const toCompress = amountSol - currentBalance.sol + 0.005; // Add buffer for tx fees
+      console.log('[LightProtocol] Insufficient compressed balance. Auto-compressing', toCompress.toFixed(4), 'SOL from main wallet...');
+
+      const compressResult = await compressSOL(wallet, toCompress);
+      if (!compressResult.success) {
+        return {
+          success: false,
+          feeBreakdown,
+          error: `Failed to auto-compress SOL from main wallet: ${compressResult.error}`,
+        };
+      }
+
+      console.log('[LightProtocol] ✅ Auto-compression successful. Proceeding with transfer...');
+
+      // Small delay to ensure state is updated
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    // ========================================
     // TX 1: Send fee to relayer
     // ========================================
     console.log('[LightProtocol] Step 1/2: Sending fee to relayer...');

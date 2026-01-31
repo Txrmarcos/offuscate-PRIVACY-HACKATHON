@@ -13,13 +13,13 @@ import {
   Wallet,
   Plus,
 } from 'lucide-react';
-import { useRole } from '../lib/role';
+import { useRole, UserRole } from '../lib/role';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 
 export function OnboardingModal() {
   const router = useRouter();
-  const { needsOnboarding, pendingInviteCode } = useRole();
+  const { needsOnboarding, pendingInviteCode, setRole } = useRole();
   const { connected } = useWallet();
   const { setVisible } = useWalletModal();
   const [selectedPath, setSelectedPath] = useState<'employer' | 'recipient' | null>(null);
@@ -39,7 +39,8 @@ export function OnboardingModal() {
     }
 
     if (selectedPath === 'employer') {
-      // Dismiss modal and redirect to create batch page
+      // Set role to employer and redirect to create batch page
+      setRole('employer');
       setDismissed(true);
       router.push('/launch');
     } else if (selectedPath === 'recipient') {
