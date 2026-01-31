@@ -784,14 +784,14 @@ export default function TreasuryPage() {
                   </div>
                 </button>
                 {/* Fee info when relayer is enabled */}
-                {useRelayer && amount > 0 && (
+                {useRelayer && parseFloat(paymentAmount) > 0 && (
                   <div className="mt-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
                     <div className="flex items-center gap-2 text-orange-400/80 text-xs">
                       <Shield className="w-3 h-3" />
-                      <span>Privacy fee: {(amount * 0.005).toFixed(4)} SOL (0.5%)</span>
+                      <span>Privacy fee: {(parseFloat(paymentAmount) * 0.005).toFixed(4)} SOL (0.5%)</span>
                     </div>
                     <p className="text-orange-400/60 text-[10px] mt-1">
-                      Recipient receives: {(amount * 0.995).toFixed(4)} SOL
+                      Recipient receives: {(parseFloat(paymentAmount) * 0.995).toFixed(4)} SOL
                     </p>
                   </div>
                 )}

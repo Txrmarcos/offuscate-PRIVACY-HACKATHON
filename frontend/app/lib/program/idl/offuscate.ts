@@ -15,10 +15,6 @@ export type Offuscate = {
   "instructions": [
     {
       "name": "acceptInvite",
-      "docs": [
-        "Accept an invite and register stealth address",
-        "The recipient provides their stealth meta-address"
-      ],
       "discriminator": [
         173,
         11,
@@ -73,19 +69,6 @@ export type Offuscate = {
     },
     {
       "name": "acceptInviteStreaming",
-      "docs": [
-        "Accept invite AND automatically add to streaming payroll",
-        "",
-        "PRIVACY FLOW:",
-        "1. Employee generates a stealth keypair LOCALLY (not their main wallet)",
-        "2. Passes the stealth PUBLIC KEY as employee_stealth_pubkey",
-        "3. Employee account is created with wallet = stealth pubkey",
-        "4. Employee keeps stealth PRIVATE KEY locally",
-        "5. To claim salary, employee signs with stealth keypair",
-        "",
-        "Result: On-chain shows \"stealth ABC receives payment\"",
-        "No one knows stealth ABC belongs to which real person"
-      ],
       "discriminator": [
         186,
         69,
@@ -108,8 +91,7 @@ export type Offuscate = {
         {
           "name": "employeeStealthPubkey",
           "docs": [
-            "The stealth public key that will own the Employee account",
-            "This is generated locally by the employee, NOT their main wallet"
+            "The stealth public key that will own the Employee account"
           ]
         },
         {
@@ -164,7 +146,7 @@ export type Offuscate = {
         {
           "name": "batch",
           "docs": [
-            "The batch this invite belongs to (via invite.batch -> campaign)"
+            "The batch this invite belongs to"
           ],
           "writable": true
         },
@@ -215,9 +197,6 @@ export type Offuscate = {
     },
     {
       "name": "addEmployee",
-      "docs": [
-        "Add an employee to a batch with streaming salary"
-      ],
       "discriminator": [
         14,
         82,
@@ -293,15 +272,6 @@ export type Offuscate = {
     },
     {
       "name": "batchClaimWithdraw",
-      "docs": [
-        "BATCH CLAIM WITHDRAWALS",
-        "",
-        "PRIVACY FEATURE: Processes multiple pending withdrawals in a single transaction.",
-        "This breaks the visual pattern of \"1 withdraw = 1 tx\" that analysts use for correlation.",
-        "",
-        "remaining_accounts: pairs of [recipient_account, pending_withdraw_pda] for each withdrawal",
-        "Max 5 withdrawals per batch to stay within compute limits."
-      ],
       "discriminator": [
         110,
         48,
@@ -313,11 +283,6 @@ export type Offuscate = {
         152
       ],
       "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
         {
           "name": "pool",
           "writable": true,
@@ -375,9 +340,6 @@ export type Offuscate = {
     },
     {
       "name": "claimSalary",
-      "docs": [
-        "Employee claims accrued salary (streaming)"
-      ],
       "discriminator": [
         253,
         112,
@@ -443,12 +405,6 @@ export type Offuscate = {
     },
     {
       "name": "claimWithdraw",
-      "docs": [
-        "Claim a pending withdrawal after the delay has passed",
-        "",
-        "PRIVACY: The recipient (stealth address) signs to claim.",
-        "Observers cannot link this to the original deposit."
-      ],
       "discriminator": [
         232,
         89,
@@ -546,21 +502,6 @@ export type Offuscate = {
     },
     {
       "name": "claimWithdrawRelayed",
-      "docs": [
-        "Claim a pending withdrawal via RELAYER (gasless for recipient)",
-        "",
-        "PRIVACY FEATURE: The recipient does NOT pay gas and does NOT appear as tx signer.",
-        "Instead, a relayer submits the transaction and pays fees.",
-        "The recipient proves ownership by signing a message off-chain (ed25519).",
-        "",
-        "Flow:",
-        "1. Recipient signs message: \"claim:{pending_pda}\" with stealth keypair",
-        "2. Relayer creates ed25519 verify instruction + this instruction",
-        "3. Relayer submits tx and pays gas",
-        "4. Funds go to stealth address without it being fee payer",
-        "",
-        "This breaks: stealth_address -> fee payer link"
-      ],
       "discriminator": [
         141,
         26,
@@ -673,9 +614,6 @@ export type Offuscate = {
     },
     {
       "name": "closeCampaign",
-      "docs": [
-        "Close a campaign (only owner)"
-      ],
       "discriminator": [
         65,
         49,
@@ -730,9 +668,6 @@ export type Offuscate = {
     },
     {
       "name": "createBatch",
-      "docs": [
-        "Create a new payroll batch (index-based PDA)"
-      ],
       "discriminator": [
         159,
         198,
@@ -843,11 +778,6 @@ export type Offuscate = {
     },
     {
       "name": "createBatchInvite",
-      "docs": [
-        "Create an invite for a recipient to join a payroll batch (using PayrollBatch)",
-        "Only the batch owner can create invites",
-        "salary_rate: lamports per second (0 = no streaming, just invite)"
-      ],
       "discriminator": [
         205,
         243,
@@ -935,10 +865,6 @@ export type Offuscate = {
     },
     {
       "name": "createCampaign",
-      "docs": [
-        "Create a new campaign with a vault PDA",
-        "The vault is controlled by the program, not the owner"
-      ],
       "discriminator": [
         111,
         131,
@@ -1032,11 +958,6 @@ export type Offuscate = {
     },
     {
       "name": "createInvite",
-      "docs": [
-        "Create an invite for a recipient to join a payroll batch",
-        "Only the batch owner can create invites",
-        "salary_rate: lamports per second (0 = no streaming, just invite)"
-      ],
       "discriminator": [
         160,
         94,
@@ -1122,10 +1043,6 @@ export type Offuscate = {
     },
     {
       "name": "createReceipt",
-      "docs": [
-        "Create an anonymous receipt when claiming salary",
-        "Called after claim_salary to create a verifiable proof of payment"
-      ],
       "discriminator": [
         187,
         57,
@@ -1201,11 +1118,6 @@ export type Offuscate = {
     },
     {
       "name": "donate",
-      "docs": [
-        "Donate to a campaign",
-        "Funds go to the vault PDA, not the owner",
-        "The donor can use a stealth address as the source"
-      ],
       "discriminator": [
         121,
         186,
@@ -1285,9 +1197,6 @@ export type Offuscate = {
     },
     {
       "name": "fundBatch",
-      "docs": [
-        "Fund a batch's vault"
-      ],
       "discriminator": [
         177,
         109,
@@ -1354,9 +1263,6 @@ export type Offuscate = {
     },
     {
       "name": "getPoolStats",
-      "docs": [
-        "Get pool stats (view function for frontend)"
-      ],
       "discriminator": [
         119,
         221,
@@ -1419,12 +1325,6 @@ export type Offuscate = {
     },
     {
       "name": "initChurnVault",
-      "docs": [
-        "Initialize a churn vault (call once per vault: 0, 1, 2)",
-        "",
-        "PRIVACY FEATURE: Churn vaults enable internal micro-movements that",
-        "break graph heuristics used by blockchain analysts."
-      ],
       "discriminator": [
         133,
         111,
@@ -1535,9 +1435,6 @@ export type Offuscate = {
     },
     {
       "name": "initMasterVault",
-      "docs": [
-        "Initialize the global master vault (one-time setup)"
-      ],
       "discriminator": [
         30,
         213,
@@ -1588,10 +1485,6 @@ export type Offuscate = {
     },
     {
       "name": "initPrivacyPool",
-      "docs": [
-        "Initialize the global privacy pool",
-        "Called once to create the pool PDA"
-      ],
       "discriminator": [
         108,
         181,
@@ -1665,13 +1558,6 @@ export type Offuscate = {
     },
     {
       "name": "poolChurn",
-      "docs": [
-        "Pool Churn - Move funds from main pool to churn vault",
-        "",
-        "PRIVACY: Creates internal transactions that look like real activity.",
-        "Breaks the pattern: deposit → (delay) → withdraw",
-        "Into: deposit → churn → unchurn → (delay) → withdraw"
-      ],
       "discriminator": [
         199,
         230,
@@ -1808,17 +1694,6 @@ export type Offuscate = {
     },
     {
       "name": "poolDeposit",
-      "docs": [
-        "Deposit SOL into the privacy pool",
-        "",
-        "PRIVACY: This instruction intentionally does NOT track:",
-        "- Who deposited (sender)",
-        "- Who will receive (receiver)",
-        "- Which campaign (if any)",
-        "- The individual deposit (only aggregate stats)",
-        "",
-        "This breaks the link between donor and recipient."
-      ],
       "discriminator": [
         26,
         109,
@@ -1897,11 +1772,6 @@ export type Offuscate = {
     },
     {
       "name": "poolUnchurn",
-      "docs": [
-        "Pool Unchurn - Return funds from churn vault to main pool",
-        "",
-        "PRIVACY: Second step of churn - returns funds, adding noise to the graph."
-      ],
       "discriminator": [
         41,
         228,
@@ -1920,6 +1790,7 @@ export type Offuscate = {
         },
         {
           "name": "pool",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1967,6 +1838,7 @@ export type Offuscate = {
         },
         {
           "name": "churnState",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -2036,22 +1908,6 @@ export type Offuscate = {
     },
     {
       "name": "privateDeposit",
-      "docs": [
-        "Private deposit with commitment",
-        "",
-        "PRIVACY FLOW:",
-        "1. User generates: secret (32 bytes random), nullifier_secret (32 bytes random)",
-        "2. User computes: commitment = hash(secret_hash || nullifier || amount_bytes)",
-        "where secret_hash = hash(secret), nullifier = hash(nullifier_secret)",
-        "3. User calls this instruction with commitment hash",
-        "4. On-chain: creates CommitmentPDA with commitment hash (not secrets)",
-        "",
-        "Even an advanced indexer only sees:",
-        "- A deposit happened",
-        "- The commitment hash",
-        "- The amount (one of standardized amounts)",
-        "Cannot link to future withdrawal without knowing the secrets"
-      ],
       "discriminator": [
         77,
         169,
@@ -2170,22 +2026,6 @@ export type Offuscate = {
     },
     {
       "name": "privateWithdraw",
-      "docs": [
-        "Private withdraw with nullifier",
-        "",
-        "PRIVACY FLOW:",
-        "1. User provides: nullifier = hash(nullifier_secret)",
-        "2. User provides: secret_hash = hash(secret)",
-        "3. User provides: recipient address (stealth address)",
-        "4. On-chain verifies:",
-        "- Commitment PDA exists for hash(secret_hash || nullifier || amount_bytes)",
-        "- Nullifier not already used (NullifierPDA doesn't exist)",
-        "5. Creates NullifierPDA (marks as used), transfers to recipient",
-        "",
-        "The nullifier breaks the link:",
-        "- Nullifier is derived from nullifier_secret known only to depositor",
-        "- Cannot be correlated to the original commitment without the secrets"
-      ],
       "discriminator": [
         90,
         238,
@@ -2351,12 +2191,6 @@ export type Offuscate = {
     },
     {
       "name": "privateWithdrawRelayed",
-      "docs": [
-        "Private withdraw via relayer (gasless)",
-        "",
-        "Same as private_withdraw but with relayer paying gas.",
-        "Uses ed25519 signature verification to prove recipient ownership."
-      ],
       "discriminator": [
         224,
         44,
@@ -2524,11 +2358,6 @@ export type Offuscate = {
     },
     {
       "name": "registerStealthPayment",
-      "docs": [
-        "Register a stealth payment (metadata only, NO SOL transfer)",
-        "This helps the recipient scan for their payments",
-        "The actual SOL goes directly to the stealth address via SystemProgram"
-      ],
       "discriminator": [
         111,
         87,
@@ -2621,15 +2450,6 @@ export type Offuscate = {
     },
     {
       "name": "requestWithdraw",
-      "docs": [
-        "Request a withdrawal from the privacy pool",
-        "",
-        "Creates a pending withdrawal with a VARIABLE time delay (30s - 5min).",
-        "The amount must be one of the standardized amounts.",
-        "",
-        "PRIVACY: Only the stealth_address is recorded (not who requested).",
-        "The variable delay prevents timing correlation attacks."
-      ],
       "discriminator": [
         137,
         95,
@@ -2740,9 +2560,6 @@ export type Offuscate = {
     },
     {
       "name": "revokeInvite",
-      "docs": [
-        "Revoke an invite (only creator can revoke pending invites)"
-      ],
       "discriminator": [
         242,
         199,
@@ -2792,9 +2609,6 @@ export type Offuscate = {
     },
     {
       "name": "setEmployeeStatus",
-      "docs": [
-        "Pause/Resume employee streaming"
-      ],
       "discriminator": [
         57,
         44,
@@ -2832,10 +2646,6 @@ export type Offuscate = {
     },
     {
       "name": "setStealthMetaAddress",
-      "docs": [
-        "Set stealth meta-address for a campaign",
-        "This allows donors to generate stealth addresses for private donations"
-      ],
       "discriminator": [
         181,
         193,
@@ -2891,9 +2701,6 @@ export type Offuscate = {
     },
     {
       "name": "updateSalaryRate",
-      "docs": [
-        "Update employee salary rate"
-      ],
       "discriminator": [
         159,
         147,
@@ -2927,12 +2734,6 @@ export type Offuscate = {
     },
     {
       "name": "verifyReceipt",
-      "docs": [
-        "Verify an anonymous receipt",
-        "Anyone can call this to verify that a receipt is valid",
-        "The verifier provides all data EXCEPT the amount",
-        "If the commitment matches, the receipt is valid"
-      ],
       "discriminator": [
         202,
         144,
@@ -2988,10 +2789,6 @@ export type Offuscate = {
     },
     {
       "name": "verifyReceiptBlind",
-      "docs": [
-        "Generate a blind receipt (for third-party verification without amount)",
-        "The employee provides a ZK-like proof without revealing amount"
-      ],
       "discriminator": [
         161,
         203,
@@ -3034,10 +2831,6 @@ export type Offuscate = {
     },
     {
       "name": "withdraw",
-      "docs": [
-        "Withdraw funds from campaign vault",
-        "Only the owner can withdraw"
-      ],
       "discriminator": [
         183,
         18,
@@ -3501,6 +3294,9 @@ export type Offuscate = {
   "types": [
     {
       "name": "batchStatus",
+      "docs": [
+        "Batch status enum"
+      ],
       "type": {
         "kind": "enum",
         "variants": [
@@ -3518,6 +3314,9 @@ export type Offuscate = {
     },
     {
       "name": "campaign",
+      "docs": [
+        "Campaign account - stores campaign details"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -3590,6 +3389,9 @@ export type Offuscate = {
     },
     {
       "name": "campaignStatus",
+      "docs": [
+        "Campaign status enum"
+      ],
       "type": {
         "kind": "enum",
         "variants": [
@@ -3733,6 +3535,9 @@ export type Offuscate = {
     },
     {
       "name": "employeeStatus",
+      "docs": [
+        "Employee status enum"
+      ],
       "type": {
         "kind": "enum",
         "variants": [
@@ -3805,6 +3610,9 @@ export type Offuscate = {
     },
     {
       "name": "inviteStatus",
+      "docs": [
+        "Invite status enum"
+      ],
       "type": {
         "kind": "enum",
         "variants": [
