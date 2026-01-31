@@ -27,7 +27,9 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction, SystemProgram, TransactionInstruction } from '@solana/web3.js';
 import { useProgram } from '../lib/program';
 import { useStealth } from '../lib/stealth/StealthContext';
-import { privateZKDonation, privateZKDonationRelayed, getRelayerPublicKey, type LightWallet } from '../lib/privacy/lightProtocol';
+import { privateZKDonation, privateZKDonationRelayed, privateTransferWithFee, getRelayerPublicKey, type LightWallet, type TwoTxTransferResult } from '../lib/privacy/lightProtocol';
+import { TransactionResult } from '../components/TransactionResult';
+import { calculateRelayerFee, type FeeBreakdown } from '../lib/config/relayerFees';
 import { triggerOffuscation } from '../components/WaveMeshBackground';
 import { generateStealthAddress, parseStealthMetaAddress } from '../lib/stealth';
 import { StealthPaymentScanner } from '../components/StealthPaymentScanner';
@@ -135,6 +137,7 @@ export default function TreasuryPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [txSignature, setTxSignature] = useState<string | null>(null);
+  const [txResult, setTxResult] = useState<TwoTxTransferResult | null>(null);
 
   // Payroll stats
   const [payrollStats, setPayrollStats] = useState({
@@ -249,6 +252,7 @@ export default function TreasuryPage() {
     setError(null);
     setSuccess(null);
     setTxSignature(null);
+    setTxResult(null);
 
     try {
       const connection = new Connection(RPC_URL, 'confirmed');
@@ -284,12 +288,28 @@ export default function TreasuryPage() {
           };
 
           // ZK transfer to stealth address (with or without relayer)
-          const result = useRelayer
-            ? await privateZKDonationRelayed(lightWallet, stealthAddress, amount)
-            : await privateZKDonation(lightWallet, stealthAddress, amount);
+          if (useRelayer) {
+            // Two-transaction model: fee goes to relayer, then transfer to recipient
+            const result = await privateTransferWithFee(lightWallet, stealthAddress, amount);
 
-          if (!result.success) {
-            throw new Error(result.error || 'ZK payment failed');
+            if (!result.success) {
+              throw new Error(result.error || 'ZK payment failed');
+            }
+
+            // Store full result for display
+            setTxResult(result);
+            setTxSignature(result.transferSignature || null);
+            setSuccess(`Sent with ULTIMATE PRIVACY! Recipient receives ${result.feeBreakdown.recipientAmount.toFixed(4)} SOL`);
+          } else {
+            // Single transaction (no relayer)
+            const result = await privateZKDonation(lightWallet, stealthAddress, amount);
+
+            if (!result.success) {
+              throw new Error(result.error || 'ZK payment failed');
+            }
+
+            setTxSignature(result.signature!);
+            setSuccess(`Sent ${amount} SOL with MAXIMUM PRIVACY (sender, recipient & amount hidden!)`);
           }
 
           // Send memo with ephemeral pubkey in separate transaction
@@ -319,12 +339,6 @@ export default function TreasuryPage() {
             await connection.sendRawTransaction(signedMemoTx.serialize());
           }
 
-          setTxSignature(result.signature!);
-          setSuccess(
-            useRelayer
-              ? `Sent ${amount} SOL with ULTIMATE PRIVACY (sender, recipient, amount & fee payer hidden!)`
-              : `Sent ${amount} SOL with MAXIMUM PRIVACY (sender, recipient & amount hidden!)`
-          );
           triggerOffuscation();
         } else {
           // Stealth only (no ZK) - amount visible
@@ -390,20 +404,28 @@ export default function TreasuryPage() {
               : signTransaction as any,
           };
 
-          const result = useRelayer
-            ? await privateZKDonationRelayed(lightWallet, recipient, amount)
-            : await privateZKDonation(lightWallet, recipient, amount);
+          if (useRelayer) {
+            // Two-transaction model with fee
+            const result = await privateTransferWithFee(lightWallet, recipient, amount);
 
-          if (!result.success) {
-            throw new Error(result.error || 'ZK payment failed');
+            if (!result.success) {
+              throw new Error(result.error || 'ZK payment failed');
+            }
+
+            setTxResult(result);
+            setTxSignature(result.transferSignature || null);
+            setSuccess(`Sent with FULL PRIVACY! Recipient receives ${result.feeBreakdown.recipientAmount.toFixed(4)} SOL`);
+          } else {
+            // Single transaction (no relayer)
+            const result = await privateZKDonation(lightWallet, recipient, amount);
+
+            if (!result.success) {
+              throw new Error(result.error || 'ZK payment failed');
+            }
+
+            setTxSignature(result.signature!);
+            setSuccess(`Sent ${amount} SOL with ZK privacy (sender & amount hidden)`);
           }
-
-          setTxSignature(result.signature!);
-          setSuccess(
-            useRelayer
-              ? `Sent ${amount} SOL with ZK privacy (sender, amount & fee payer hidden)`
-              : `Sent ${amount} SOL with ZK privacy (sender & amount hidden)`
-          );
           triggerOffuscation();
         } else {
           // Direct transfer
@@ -725,7 +747,7 @@ export default function TreasuryPage() {
             {useZK && (
               <div className="mb-4">
                 <label className="block text-[10px] text-white/30 uppercase tracking-widest mb-2">
-                  Gasless Relayer (Hide Fee Payer)
+                  Full Privacy Mode (Hide Fee Payer)
                 </label>
                 <button
                   onClick={() => setUseRelayer(!useRelayer)}
@@ -738,17 +760,17 @@ export default function TreasuryPage() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <EyeOff className={`w-5 h-5 ${useRelayer ? 'text-white' : 'text-white/30'}`} />
+                      <Shield className={`w-5 h-5 ${useRelayer ? 'text-white' : 'text-white/30'}`} />
                       <div>
                         <p className="text-white font-medium text-sm">
-                          {useRelayer ? 'Relayer Enabled' : 'Relayer Disabled'}
+                          {useRelayer ? 'Full Privacy Enabled' : 'Standard Privacy'}
                         </p>
                         <p className="text-white/40 text-xs">
                           {!relayerAvailable
                             ? 'Relayer not configured on server'
                             : useRelayer
-                            ? 'Fee payer hidden (relayer pays gas)'
-                            : 'Fee payer visible on-chain'}
+                            ? 'Relayer pays gas • 0.5% privacy fee applies'
+                            : 'Your wallet pays gas (visible on-chain)'}
                         </p>
                       </div>
                     </div>
@@ -761,6 +783,18 @@ export default function TreasuryPage() {
                     </div>
                   </div>
                 </button>
+                {/* Fee info when relayer is enabled */}
+                {useRelayer && amount > 0 && (
+                  <div className="mt-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                    <div className="flex items-center gap-2 text-orange-400/80 text-xs">
+                      <Shield className="w-3 h-3" />
+                      <span>Privacy fee: {(amount * 0.005).toFixed(4)} SOL (0.5%)</span>
+                    </div>
+                    <p className="text-orange-400/60 text-[10px] mt-1">
+                      Recipient receives: {(amount * 0.995).toFixed(4)} SOL
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -885,7 +919,24 @@ export default function TreasuryPage() {
               </div>
             )}
 
-            {success && (
+            {/* Transaction Result with Fee Breakdown */}
+            {txResult && (
+              <div className="mt-4">
+                <TransactionResult
+                  success={txResult.success}
+                  feeSignature={txResult.feeSignature}
+                  transferSignature={txResult.transferSignature}
+                  feeBreakdown={txResult.feeBreakdown}
+                  error={txResult.error}
+                  failedStep={txResult.failedStep}
+                  onClose={() => setTxResult(null)}
+                  showPrivacyInfo={true}
+                />
+              </div>
+            )}
+
+            {/* Simple success message (for non-relayer transfers) */}
+            {success && !txResult && (
               <div className="mt-4 p-3 bg-white/[0.05] border border-white/[0.15] rounded-xl">
                 <div className="flex items-center gap-2 mb-1">
                   <CheckCircle className="w-4 h-4 text-white" />

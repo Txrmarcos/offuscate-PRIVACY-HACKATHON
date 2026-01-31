@@ -35,6 +35,10 @@ import {
   TransactionInstruction,
   Connection,
 } from '@solana/web3.js';
+import {
+  calculateRelayerFee,
+  type FeeBreakdown,
+} from '../config/relayerFees';
 
 // ============================================================================
 // Types
@@ -479,6 +483,7 @@ export interface RelayedTransferResult {
   success: boolean;
   signature?: string;
   error?: string;
+  feeBreakdown?: FeeBreakdown;
 }
 
 /**
@@ -781,27 +786,402 @@ export async function decompressSOLRelayed(
   }
 }
 
+// ============================================================================
+// Fee-Aware Relayer Functions (Two-Transaction Model)
+// ============================================================================
+
 /**
- * Private ZK Donation with Relayer - Complete privacy with gasless transfer
- *
- * This achieves maximum privacy:
- * - Sender identity hidden via ZK compression
- * - Fee payer identity hidden via relayer
- * - Amount verified via zero-knowledge proof
+ * Result of a two-transaction transfer with fee
  */
-export async function privateZKDonationRelayed(
+export interface TwoTxTransferResult {
+  success: boolean;
+  /** Signature of TX1 (fee to relayer) */
+  feeSignature?: string;
+  /** Signature of TX2 (amount to recipient) */
+  transferSignature?: string;
+  /** Fee breakdown */
+  feeBreakdown: FeeBreakdown;
+  /** Error message if failed */
+  error?: string;
+  /** Which step failed (1 = fee tx, 2 = transfer tx) */
+  failedStep?: 1 | 2;
+}
+
+/**
+ * Build a decompress transaction for a specific amount to a specific recipient
+ * This is a helper function used by the two-transaction flow
+ */
+async function buildDecompressTx(
+  wallet: LightWallet,
+  relayerPubkey: PublicKey,
+  amountLamports: number,
+  recipientPubkey: PublicKey
+): Promise<{ tx: VersionedTransaction; error?: string }> {
+  try {
+    const connection = createLightRpc();
+
+    // Get compressed accounts
+    const compressedAccounts = await connection.getCompressedAccountsByOwner(wallet.publicKey);
+
+    if (!compressedAccounts.items || compressedAccounts.items.length === 0) {
+      return {
+        tx: null as any,
+        error: 'No compressed SOL found to decompress.',
+      };
+    }
+
+    // Check balance
+    let totalLamports = BigInt(0);
+    for (const account of compressedAccounts.items) {
+      totalLamports += BigInt(account.lamports.toString());
+    }
+
+    if (totalLamports < BigInt(amountLamports)) {
+      return {
+        tx: null as any,
+        error: `Insufficient compressed balance. Have ${Number(totalLamports) / LAMPORTS_PER_SOL} SOL, need ${amountLamports / LAMPORTS_PER_SOL} SOL`,
+      };
+    }
+
+    // Get validity proof
+    const proof = await connection.getValidityProof(
+      compressedAccounts.items.map(a => bn(a.hash))
+    );
+
+    const { blockhash } = await connection.getLatestBlockhash();
+
+    // Create decompress instruction
+    const decompressIx = await LightSystemProgram.decompress({
+      payer: wallet.publicKey,
+      toAddress: recipientPubkey,
+      lamports: bn(amountLamports),
+      inputCompressedAccounts: compressedAccounts.items,
+      recentInputStateRootIndices: proof.rootIndices,
+      recentValidityProof: proof.compressedProof,
+    });
+
+    const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+      units: 1_200_000,
+    });
+
+    const computePriceIx = ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: 1,
+    });
+
+    const instructions: TransactionInstruction[] = [
+      computeBudgetIx,
+      computePriceIx,
+      decompressIx,
+    ];
+
+    // Build with RELAYER as fee payer
+    const tx = buildTx(instructions, relayerPubkey, blockhash, []);
+
+    // User signs to authorize spending their compressed accounts
+    const signedTx = await wallet.signTransaction(tx);
+
+    return { tx: signedTx };
+  } catch (error: any) {
+    return {
+      tx: null as any,
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * Wait for a transaction to be confirmed
+ */
+async function waitForConfirmation(signature: string, maxRetries = 30): Promise<boolean> {
+  const connection = createLightRpc();
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const status = await (connection as any).getSignatureStatus(signature);
+      if (status?.value?.confirmationStatus === 'confirmed' ||
+          status?.value?.confirmationStatus === 'finalized') {
+        return true;
+      }
+    } catch (e) {
+      // Continue waiting
+    }
+
+    // Wait 1 second before next check
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  return false;
+}
+
+/**
+ * Private Transfer with Fee - Two Transaction Model
+ *
+ * This function executes two sequential transactions:
+ * 1. TX1: Decompress fee amount to relayer wallet
+ * 2. TX2: Decompress remaining amount to recipient
+ *
+ * This ensures:
+ * - Relayer actually receives SOL (not just tracked)
+ * - Privacy is maintained (both txs go through relayer)
+ * - Fee is deducted from private funds
+ *
+ * @param wallet - User's wallet with compressed SOL
+ * @param recipientPubkey - Final recipient address
+ * @param amountSol - Total amount to send (recipient gets amount - fee)
+ * @returns TwoTxTransferResult with both signatures
+ */
+export async function privateTransferWithFee(
   wallet: LightWallet,
   recipientPubkey: PublicKey,
   amountSol: number
-): Promise<TransferResult> {
+): Promise<TwoTxTransferResult> {
+  // Calculate fee breakdown
+  const feeBreakdown = calculateRelayerFee(amountSol);
+
+  console.log('[LightProtocol] ====== Private Transfer with Fee ======');
+  console.log('[LightProtocol] Total amount:', amountSol, 'SOL');
+  console.log('[LightProtocol] Fee (to relayer):', feeBreakdown.feeAmount, 'SOL');
+  console.log('[LightProtocol] Recipient receives:', feeBreakdown.recipientAmount, 'SOL');
+
   try {
-    console.log('[LightProtocol] Starting RELAYED private ZK donation of', amountSol, 'SOL');
+    // Get relayer public key
+    const relayerPubkey = await getRelayerPublicKey();
+    if (!relayerPubkey) {
+      return {
+        success: false,
+        feeBreakdown,
+        error: 'Relayer not available. Check relayer configuration.',
+      };
+    }
+
+    // ========================================
+    // TX 1: Send fee to relayer
+    // ========================================
+    console.log('[LightProtocol] Step 1/2: Sending fee to relayer...');
+
+    const { tx: feeTx, error: feeError } = await buildDecompressTx(
+      wallet,
+      relayerPubkey,
+      feeBreakdown.feeLamports,
+      relayerPubkey // Fee goes to relayer
+    );
+
+    if (feeError || !feeTx) {
+      return {
+        success: false,
+        feeBreakdown,
+        error: `Failed to build fee transaction: ${feeError}`,
+        failedStep: 1,
+      };
+    }
+
+    // Submit fee transaction to relayer
+    const feeResult = await submitToRelayer(feeTx, 'fee');
+
+    if (!feeResult.success) {
+      return {
+        success: false,
+        feeBreakdown,
+        error: `Fee transaction failed: ${feeResult.error}`,
+        failedStep: 1,
+      };
+    }
+
+    console.log('[LightProtocol] ✅ TX1 (fee) confirmed:', feeResult.signature);
+
+    // Wait for TX1 to be confirmed before proceeding
+    console.log('[LightProtocol] Waiting for fee transaction confirmation...');
+    const confirmed = await waitForConfirmation(feeResult.signature!, 20);
+
+    if (!confirmed) {
+      console.log('[LightProtocol] ⚠️ TX1 confirmation timeout, proceeding anyway...');
+    }
+
+    // Small delay to ensure state is updated
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // ========================================
+    // TX 2: Send remaining amount to recipient
+    // ========================================
+    console.log('[LightProtocol] Step 2/2: Sending to recipient...');
+
+    const { tx: transferTx, error: transferError } = await buildDecompressTx(
+      wallet,
+      relayerPubkey,
+      feeBreakdown.recipientLamports,
+      recipientPubkey // Amount goes to recipient
+    );
+
+    if (transferError || !transferTx) {
+      return {
+        success: false,
+        feeBreakdown,
+        feeSignature: feeResult.signature,
+        error: `Failed to build transfer transaction: ${transferError}. Fee was already sent to relayer.`,
+        failedStep: 2,
+      };
+    }
+
+    // Submit transfer transaction to relayer
+    const transferResult = await submitToRelayer(transferTx, 'transfer');
+
+    if (!transferResult.success) {
+      return {
+        success: false,
+        feeBreakdown,
+        feeSignature: feeResult.signature,
+        error: `Transfer transaction failed: ${transferResult.error}. Fee was already sent to relayer.`,
+        failedStep: 2,
+      };
+    }
+
+    console.log('[LightProtocol] ✅ TX2 (transfer) confirmed:', transferResult.signature);
+
+    // ========================================
+    // Success!
+    // ========================================
+    console.log('[LightProtocol] ====== Transfer Complete! ======');
+    console.log('[LightProtocol] Relayer received:', feeBreakdown.feeAmount, 'SOL');
+    console.log('[LightProtocol] Recipient received:', feeBreakdown.recipientAmount, 'SOL');
+
+    return {
+      success: true,
+      feeSignature: feeResult.signature,
+      transferSignature: transferResult.signature,
+      feeBreakdown,
+    };
+
+  } catch (error: any) {
+    console.error('[LightProtocol] Private transfer with fee error:', error);
+    return {
+      success: false,
+      feeBreakdown,
+      error: error.message || 'Failed to complete private transfer with fee',
+    };
+  }
+}
+
+/**
+ * Build a ZK decompress transaction with fee deduction (Legacy - single tx approach)
+ * @deprecated Use privateTransferWithFee for actual fee collection
+ */
+export async function buildRelayedDecompressTxWithFee(
+  wallet: LightWallet,
+  relayerPubkey: PublicKey,
+  amountSol: number,
+  recipientPubkey: PublicKey
+): Promise<{ tx: VersionedTransaction; feeBreakdown: FeeBreakdown; error?: string }> {
+  const feeBreakdown = calculateRelayerFee(amountSol);
+  const { tx, error } = await buildDecompressTx(
+    wallet,
+    relayerPubkey,
+    feeBreakdown.recipientLamports,
+    recipientPubkey
+  );
+  return { tx, feeBreakdown, error };
+}
+
+/**
+ * Relayed Decompress SOL with Fee (Legacy - uses single tx, fee tracked only)
+ * @deprecated Use privateTransferWithFee for actual fee collection
+ */
+export async function decompressSOLRelayedWithFee(
+  wallet: LightWallet,
+  amountSol: number,
+  recipientPubkey: PublicKey
+): Promise<DecompressResult & { feeBreakdown?: FeeBreakdown }> {
+  // Delegate to the new two-tx implementation
+  const result = await privateTransferWithFee(wallet, recipientPubkey, amountSol);
+
+  return {
+    success: result.success,
+    signature: result.transferSignature,
+    decompressedAmount: result.feeBreakdown.recipientAmount,
+    feeBreakdown: result.feeBreakdown,
+    error: result.error,
+  };
+}
+
+/**
+ * Submit a transaction to the relayer with fee information
+ */
+async function submitToRelayerWithFee(
+  tx: VersionedTransaction,
+  operationType: string,
+  feeBreakdown: FeeBreakdown
+): Promise<RelayedTransferResult> {
+  try {
+    const txBase64 = Buffer.from(tx.serialize()).toString('base64');
+
+    const response = await fetch('/api/relayer/zk-transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        signedTransaction: txBase64,
+        operationType,
+        feeInfo: {
+          originalAmount: feeBreakdown.originalAmount,
+          recipientAmount: feeBreakdown.recipientAmount,
+          feeAmount: feeBreakdown.feeAmount,
+          feeLamports: feeBreakdown.feeLamports,
+        },
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || data.details || 'Relayer submission failed',
+      };
+    }
+
+    return {
+      success: true,
+      signature: data.signature,
+      feeBreakdown,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message || 'Failed to submit to relayer',
+    };
+  }
+}
+
+/**
+ * Private ZK Donation with Relayer and Fee - Complete privacy with fee deduction
+ *
+ * This achieves maximum privacy while sustaining the relayer:
+ * - Sender identity hidden via ZK compression
+ * - Fee payer identity hidden via relayer
+ * - Relayer fee deducted from transfer (not public wallet)
+ * - Amount verified via zero-knowledge proof
+ *
+ * @param wallet - User's wallet
+ * @param recipientPubkey - Recipient address
+ * @param amountSol - Total amount (recipient gets amount - fee)
+ * @returns Result with fee breakdown
+ */
+export async function privateZKDonationRelayedWithFee(
+  wallet: LightWallet,
+  recipientPubkey: PublicKey,
+  amountSol: number
+): Promise<RelayedTransferResult> {
+  try {
+    const feeBreakdown = calculateRelayerFee(amountSol);
+
+    console.log('[LightProtocol] Starting RELAYED private ZK donation with fee');
+    console.log('[LightProtocol] Amount:', amountSol, 'SOL');
+    console.log('[LightProtocol] Recipient will receive:', feeBreakdown.recipientAmount, 'SOL');
+    console.log('[LightProtocol] Relayer fee:', feeBreakdown.feeAmount, 'SOL');
 
     // Step 1: Check current compressed balance
     const currentBalance = await getCompressedBalance(wallet.publicKey);
     console.log('[LightProtocol] Current compressed balance:', currentBalance.sol, 'SOL');
 
-    const lamportsNeeded = Math.floor(amountSol * LAMPORTS_PER_SOL);
+    const lamportsNeeded = feeBreakdown.originalLamports;
 
     // Step 2: Compress more SOL if needed (via relayer)
     if (currentBalance.lamports < lamportsNeeded) {
@@ -813,35 +1193,68 @@ export async function privateZKDonationRelayed(
         return {
           success: false,
           error: `Failed to compress SOL: ${compressResult.error}`,
+          feeBreakdown,
         };
       }
 
       console.log('[LightProtocol] Relayed compression successful');
     }
 
-    // Step 3: Decompress to recipient (via relayer)
-    const decompressResult = await decompressSOLRelayed(wallet, amountSol, recipientPubkey);
+    // Step 3: Decompress to recipient with fee deduction
+    const decompressResult = await decompressSOLRelayedWithFee(
+      wallet,
+      amountSol,
+      recipientPubkey
+    );
 
     if (!decompressResult.success) {
       return {
         success: false,
         error: `Failed to decompress to recipient: ${decompressResult.error}`,
+        feeBreakdown,
       };
     }
 
-    console.log('[LightProtocol] ✅ Relayed private ZK donation complete!');
+    console.log('[LightProtocol] ✅ Relayed private ZK donation with fee complete!');
+    console.log('[LightProtocol] Recipient received:', feeBreakdown.recipientAmount, 'SOL');
+    console.log('[LightProtocol] Relayer earned:', feeBreakdown.feeAmount, 'SOL');
+
     return {
       success: true,
       signature: decompressResult.signature,
+      feeBreakdown,
     };
 
   } catch (error: any) {
-    console.error('[LightProtocol] Relayed private donation error:', error);
+    console.error('[LightProtocol] Relayed private donation with fee error:', error);
     return {
       success: false,
       error: error.message || 'Failed to complete relayed private donation',
     };
   }
+}
+
+/**
+ * Private ZK Donation with Relayer - Complete privacy with gasless transfer
+ * @deprecated Use privateZKDonationRelayedWithFee for fee-aware transfers
+ *
+ * This achieves maximum privacy:
+ * - Sender identity hidden via ZK compression
+ * - Fee payer identity hidden via relayer
+ * - Amount verified via zero-knowledge proof
+ */
+export async function privateZKDonationRelayed(
+  wallet: LightWallet,
+  recipientPubkey: PublicKey,
+  amountSol: number
+): Promise<TransferResult> {
+  // Delegate to fee-aware version
+  const result = await privateZKDonationRelayedWithFee(wallet, recipientPubkey, amountSol);
+  return {
+    success: result.success,
+    signature: result.signature,
+    error: result.error,
+  };
 }
 
 // ============================================================================

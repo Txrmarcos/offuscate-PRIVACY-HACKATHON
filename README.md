@@ -17,6 +17,7 @@ Offuscate is the first **privacy-first B2B payroll platform** on Solana. Pay emp
   - [ZK Compression (Light Protocol)](#2-zk-compression-light-protocol)
   - [Helius Infrastructure](#3-helius-infrastructure)
   - [Gasless Relayer](#4-gasless-relayer)
+  - [Privacy Fee](#privacy-fee-self-sustaining-model)
 - [Features](#features)
 - [Architecture](#architecture)
 - [System Diagrams](#system-diagrams)
@@ -80,13 +81,15 @@ Offuscate combines multiple privacy technologies into a single, easy-to-use plat
 
 ### Privacy Matrix
 
-| Option | Sender | Recipient | Amount | Fee Payer | Best For |
-|--------|--------|-----------|--------|-----------|----------|
-| Standard | Visible | Visible | Visible | Visible | Public payments |
-| Stealth Address | Visible | **Hidden** | Visible | Visible | Hide who receives |
-| ZK Compression | **Hidden** | Visible | **Hidden** | Visible | Hide how much |
-| ZK + Stealth | **Hidden** | **Hidden** | **Hidden** | Visible | Maximum privacy |
-| **ZK + Stealth + Relayer** | **Hidden** | **Hidden** | **Hidden** | **Hidden** | **Ultimate privacy** |
+| Option | Sender | Recipient | Amount | Fee Payer | Fee | Best For |
+|--------|--------|-----------|--------|-----------|-----|----------|
+| Standard | Visible | Visible | Visible | Visible | None | Public payments |
+| Stealth Address | Visible | **Hidden** | Visible | Visible | None | Hide who receives |
+| ZK Compression | **Hidden** | Visible | **Hidden** | Visible | None | Hide how much |
+| ZK + Stealth | **Hidden** | **Hidden** | **Hidden** | Visible | None | Maximum privacy |
+| **ZK + Stealth + Relayer** | **Hidden** | **Hidden** | **Hidden** | **Hidden** | **0.5%** | **Ultimate privacy** |
+
+> **Note:** The 0.5% privacy fee only applies when using Full Privacy Mode (Relayer enabled). This fee sustains the relayer service and is deducted from the transfer amount, not from a public wallet, ensuring your privacy is never compromised.
 
 ---
 
@@ -487,6 +490,64 @@ export async function POST(req: Request) {
 | **Rate Limiting** | Prevent abuse with per-wallet limits |
 | **Funding** | Relayer wallet needs SOL balance for gas |
 | **No Custody** | Relayer never holds user funds, only pays fees |
+
+#### Privacy Fee (Self-Sustaining Model)
+
+To maintain the relayer and ensure long-term sustainability, a small **0.5% privacy fee** is deducted from transfers when using Full Privacy Mode (relayer enabled).
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    PRIVACY FEE MODEL                             │
+└─────────────────────────────────────────────────────────────────┘
+
+  User sends: 1.0 SOL
+       │
+       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  TX 1: Fee Transaction                                       │
+  │  ────────────────────────────────────────────────────────── │
+  │  • Decompress 0.005 SOL (0.5%) to Relayer wallet             │
+  │  • This funds the relayer for gas costs                      │
+  └─────────────────────────────────────────────────────────────┘
+       │
+       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  TX 2: Transfer Transaction                                  │
+  │  ────────────────────────────────────────────────────────── │
+  │  • Decompress 0.995 SOL to Recipient                         │
+  │  • Recipient receives the remaining amount                   │
+  └─────────────────────────────────────────────────────────────┘
+       │
+       ▼
+  ✅ RESULT:
+     • Relayer: +0.005 SOL (covers gas + maintenance)
+     • Recipient: +0.995 SOL
+     • Privacy: FULLY MAINTAINED (fee from private funds)
+```
+
+**Why This Model?**
+
+| Aspect | Explanation |
+|--------|-------------|
+| **Privacy Preserved** | Fee is deducted from PRIVATE funds (compressed SOL), not a public wallet. No link created. |
+| **Self-Sustaining** | Relayer receives SOL to cover gas costs and continue operating. No external funding needed. |
+| **Transparent** | Fee is clearly shown in UI before transaction. No hidden costs. |
+| **Fair** | Only users who want full privacy pay the fee. Standard transfers are free. |
+
+**Fee Structure:**
+
+| Fee Type | Amount | Minimum | Maximum |
+|----------|--------|---------|---------|
+| Privacy Fee | 0.5% | 0.001 SOL | 0.1 SOL |
+
+**Example Calculations:**
+
+| Send Amount | Privacy Fee | Recipient Receives |
+|-------------|-------------|-------------------|
+| 0.1 SOL | 0.001 SOL (min) | 0.099 SOL |
+| 1.0 SOL | 0.005 SOL | 0.995 SOL |
+| 10 SOL | 0.05 SOL | 9.95 SOL |
+| 50 SOL | 0.1 SOL (max) | 49.9 SOL |
 
 ---
 
